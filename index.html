@@ -64,7 +64,7 @@
         <div class="selection-banner" id="selectionBanner"><div><strong id="selectionTitle">Single-site view</strong><div class="subtle" id="selectionCopy"></div></div><button class="secondary-btn" id="clearSiteSelection">Return to portfolio</button></div>
         <div class="property-browser"><article class="card"><div class="panel-title"><h2>Matching properties</h2><span class="badge" id="matchingCount">0 found</span></div><div class="property-results" id="matchingPropertyList"></div></article><article class="card property-detail" id="selectedPropertySummary"><div class="empty">Select a property to open its SiteVue360 intelligence.</div></article></div>
         <div class="grid kpis">
-          <article class="card kpi"><div class="kpi-accent"></div><div class="kpi-label">Total buildings</div><div class="kpi-value" id="kpiTotal">0</div><div class="kpi-copy">Buildings have been analysed across the current portfolio.</div></article>
+          <article class="card kpi"><div class="kpi-accent"></div><div class="kpi-label">Total buildings</div><div class="kpi-value" id="kpiTotal">0</div><div class="kpi-copy">Active sites are configured and ready for exact survey and asset data.</div></article>
           <article class="card kpi"><div class="kpi-accent"></div><div class="kpi-label">Portfolio health</div><div class="kpi-value" id="kpiHealth">0%</div><div class="kpi-copy">Overall health derived from risk, condition and intervention requirements.</div></article>
           <article class="card kpi"><div class="kpi-accent"></div><div class="kpi-label">Future liability</div><div class="kpi-value" id="kpiFuture">£0</div><div class="kpi-copy">Estimated future portfolio liability across planned works cycles.</div></article>
           <article class="card kpi"><div class="kpi-accent"></div><div class="kpi-label">Works required</div><div class="kpi-value" id="kpiWorks">0</div><div class="kpi-copy">Buildings require planned or immediate intervention.</div></article>
@@ -179,50 +179,60 @@
     </main>
 
     <footer class="footer">
-      <span>SiteVue360 Version 0.1 Demonstrator</span>
+      <span>SiteVue360 Version 0.2 · Five-Site Active Demonstrator</span>
       <span id="updatedAt">Last updated: —</span>
     </footer>
   </div>
 </div>
 
 <script>
-const DEMO_DATA = (() => {
-  const cities = ["Manchester","Birmingham","Leeds","Bristol","London","Liverpool","Sheffield","Nottingham","Newcastle","Cardiff"];
-  const types = ["Commercial","Industrial","Retail","Education","Healthcare"];
-  const roofs = ["Standing Seam","Single Ply","Built-Up Felt","Metal Profile","Liquid Applied"];
-  const clients = ["Demonstration Portfolio","North Estate Group","Central Assets Ltd"];
-  const thermal = ["Excellent","Good","Average","Poor","Fail"];
-  const energy = ["Excellent","Good","Average","Poor","Fail"];
-  const rows = [];
-  for (let i=1;i<=50;i++) {
-    const rag = i<=32 ? "Green" : i<=45 ? "Amber" : "Red";
-    const life = rag==="Green" ? 11 + (i%10) : rag==="Amber" ? 4 + (i%7) : Math.max(0, i%4);
-    const works = rag==="Green" ? (i%8===0 ? "Yes":"No") : "Yes";
-    const est = rag==="Green" ? 8000 + i*650 : rag==="Amber" ? 28000 + i*1800 : 98000 + i*4200;
-    const future = Math.round(est * (rag==="Green" ? 1.15 : rag==="Amber" ? 1.42 : 1.72));
-    const t = rag==="Green" ? thermal[i%3] : rag==="Amber" ? thermal[2 + (i%2)] : thermal[3 + (i%2)];
-    const e = rag==="Green" ? energy[i%3] : rag==="Amber" ? energy[2 + (i%2)] : energy[3 + (i%2)];
-    rows.push({
-      buildingId:`SV-${String(i).padStart(3,"0")}`,
-      buildingName:`${cities[(i-1)%cities.length]} ${["House","Centre","Works","Campus","Point"][i%5]}`,
-      clientName:clients[i%clients.length],
-      address:`${10+i} Portfolio Road, ${cities[(i-1)%cities.length]}`,
-      buildingType:types[i%types.length],
-      roofType:roofs[i%roofs.length],
-      roofAge:6 + (i*3)%38,
-      surveyDate:`2026-${String((i%6)+1).padStart(2,"0")}-${String((i%24)+1).padStart(2,"0")}`,
-      ragRating:rag,
-      worksRequired:works,
-      estimatedCosts:est,
-      serviceableLife:life,
-      thermalAssessment:t,
-      energyAssessment:e,
-      portfolioScore:rag==="Green" ? 88+(i%11) : rag==="Amber" ? 70+(i%14) : 48+(i%18),
-      futureCosts:future
-    });
+const DEMO_DATA = [
+  {
+    buildingId:"SV-ACT-001", buildingName:"Active Site 01", clientName:"Everlast Group Demo Portfolio",
+    address:"Manchester, United Kingdom", buildingType:"Commercial", roofType:"Single Ply",
+    roofAge:24, surveyDate:"2026-07-14", ragRating:"Red", worksRequired:"Yes",
+    estimatedCosts:425000, serviceableLife:1, thermalAssessment:"Poor", energyAssessment:"Average",
+    portfolioScore:54, futureCosts:610000, status:"Active", dataReadiness:"Ready for site data",
+    grossFloorArea:18400, roofArea:9650, constructionYear:2002, occupancy:"Operational",
+    surveys:6, defects:18, documents:14, warranties:5
+  },
+  {
+    buildingId:"SV-ACT-002", buildingName:"Active Site 02", clientName:"Everlast Group Demo Portfolio",
+    address:"Leeds, United Kingdom", buildingType:"Retail", roofType:"Built-Up Felt",
+    roofAge:17, surveyDate:"2026-07-08", ragRating:"Amber", worksRequired:"Yes",
+    estimatedCosts:185000, serviceableLife:5, thermalAssessment:"Average", energyAssessment:"Poor",
+    portfolioScore:71, futureCosts:265000, status:"Active", dataReadiness:"Ready for site data",
+    grossFloorArea:12750, roofArea:7200, constructionYear:2009, occupancy:"Operational",
+    surveys:4, defects:11, documents:9, warranties:3
+  },
+  {
+    buildingId:"SV-ACT-003", buildingName:"Active Site 03", clientName:"Everlast Group Demo Portfolio",
+    address:"Birmingham, United Kingdom", buildingType:"Education", roofType:"Metal Profile",
+    roofAge:11, surveyDate:"2026-06-29", ragRating:"Amber", worksRequired:"Yes",
+    estimatedCosts:96000, serviceableLife:7, thermalAssessment:"Good", energyAssessment:"Average",
+    portfolioScore:77, futureCosts:142000, status:"Active", dataReadiness:"Ready for site data",
+    grossFloorArea:9300, roofArea:5100, constructionYear:2015, occupancy:"Operational",
+    surveys:5, defects:8, documents:12, warranties:4
+  },
+  {
+    buildingId:"SV-ACT-004", buildingName:"Active Site 04", clientName:"Everlast Group Demo Portfolio",
+    address:"London, United Kingdom", buildingType:"Commercial", roofType:"Liquid Applied",
+    roofAge:6, surveyDate:"2026-07-18", ragRating:"Green", worksRequired:"No",
+    estimatedCosts:28000, serviceableLife:14, thermalAssessment:"Good", energyAssessment:"Good",
+    portfolioScore:89, futureCosts:42000, status:"Active", dataReadiness:"Ready for site data",
+    grossFloorArea:22100, roofArea:11800, constructionYear:2020, occupancy:"Operational",
+    surveys:3, defects:4, documents:8, warranties:6
+  },
+  {
+    buildingId:"SV-ACT-005", buildingName:"Active Site 05", clientName:"Everlast Group Demo Portfolio",
+    address:"Bristol, United Kingdom", buildingType:"Industrial", roofType:"Standing Seam",
+    roofAge:9, surveyDate:"2026-07-02", ragRating:"Green", worksRequired:"No",
+    estimatedCosts:44000, serviceableLife:12, thermalAssessment:"Excellent", energyAssessment:"Good",
+    portfolioScore:92, futureCosts:67000, status:"Active", dataReadiness:"Ready for site data",
+    grossFloorArea:15800, roofArea:8900, constructionYear:2017, occupancy:"Operational",
+    surveys:4, defects:5, documents:10, warranties:4
   }
-  return rows;
-})();
+];
 
 let allBuildings = structuredClone(DEMO_DATA);
 let filteredBuildings = structuredClone(DEMO_DATA);
