@@ -31,13 +31,24 @@
       </nav>
 
       <div class="top-actions">
-        <label class="primary-btn" for="csvInput">Import CSV</label>
-        <input id="csvInput" class="file-input" type="file" accept=".csv">
+        <button class="primary-btn" id="dataHubBtn">Data Import Hub</button>
         <button class="icon-btn" id="resetBtn" title="Restore demo data">Reset Demo</button>
       </div>
     </header>
 
     <main class="main">
+      <section class="data-hub card" id="dataHub" hidden>
+        <div class="panel-title"><div><h2>SiteVue360 Data Import Hub</h2><div class="subtle">Import factual records in any order. Building IDs and asset IDs link all datasets automatically.</div></div><button class="icon-btn" id="closeDataHub">Close</button></div>
+        <div class="data-import-grid">
+          <label class="import-tile" for="buildingsCsv"><strong>1. Buildings</strong><span>Core site and roof information</span><em id="buildingsStatus">Demo data active</em></label><input id="buildingsCsv" class="file-input" type="file" accept=".csv">
+          <label class="import-tile" for="assetsCsv"><strong>2. Assets</strong><span>Roof areas and maintainable assets</span><em id="assetsStatus">Generated demo assets</em></label><input id="assetsCsv" class="file-input" type="file" accept=".csv">
+          <label class="import-tile" for="surveysCsv"><strong>3. Surveys</strong><span>Survey methods, dates and findings</span><em id="surveysStatus">No imported records</em></label><input id="surveysCsv" class="file-input" type="file" accept=".csv">
+          <label class="import-tile" for="defectsCsv"><strong>4. Defects</strong><span>Individual defects and priority</span><em id="defectsStatus">No imported records</em></label><input id="defectsCsv" class="file-input" type="file" accept=".csv">
+          <label class="import-tile" for="documentsCsv"><strong>5. Documents</strong><span>Reports, warranties and links</span><em id="documentsStatus">No imported records</em></label><input id="documentsCsv" class="file-input" type="file" accept=".csv">
+          <label class="import-tile" for="worksCsv"><strong>6. Works</strong><span>Recommended works and known costs</span><em id="worksStatus">No imported records</em></label><input id="worksCsv" class="file-input" type="file" accept=".csv">
+        </div>
+        <div class="import-message" id="importMessage">Use the supplied templates. System-generated scores and future liabilities are calculated after import.</div>
+      </section>
       <section id="executive" class="view active">
         <div class="hero">
           <div>
@@ -234,6 +245,16 @@ const DEMO_DATA = [
   }
 ];
 
+const DATA_STORE = { assets:[], surveys:[], defects:[], documents:[], works:[] };
+const IMPORT_SCHEMAS = {
+  buildings:{required:["buildingId","buildingName","clientName"], numeric:["roofAge","serviceableLife","grossFloorArea","roofArea","constructionYear"]},
+  assets:{required:["assetId","buildingId","system","assetName"], numeric:["replacementCost","remainingLife","healthScore"]},
+  surveys:{required:["surveyId","buildingId","surveyDate","surveyMethod"], numeric:["defectCount","moistureReading"]},
+  defects:{required:["defectId","buildingId","description","priority"], numeric:["estimatedRepairCost"]},
+  documents:{required:["documentId","buildingId","documentType","documentTitle"], numeric:[]},
+  works:{required:["workId","buildingId","workDescription","priority"], numeric:["estimatedCost","targetYear"]}
+};
+
 let allBuildings = structuredClone(DEMO_DATA);
 let filteredBuildings = structuredClone(DEMO_DATA);
 let selectedBuildingId = allBuildings[0]?.buildingId;
@@ -425,6 +446,15 @@ const ASSET_LIBRARY = {
 let selectedAssetId=null;
 function assetSeed(buildingId,systemIndex,assetIndex){return [...buildingId].reduce((a,c)=>a+c.charCodeAt(0),0)+systemIndex*31+assetIndex*17;}
 function assetsForBuilding(building){
+  const imported=DATA_STORE.assets.filter(a=>a.buildingId===building.buildingId);
+  if(imported.length) return imported.map((a,i)=>({
+    assetId:a.assetId, system:a.system||"Unclassified", name:a.assetName||a.name||"Unnamed asset",
+    condition:a.condition||"Not assessed", risk:a.riskRating||a.risk||"Amber",
+    health:Number(a.healthScore||conditionToHealth(a.condition,a.riskRating)),
+    life:Number(a.remainingLife||0), cost:Number(a.replacementCost||0),
+    lastInspected:a.lastInspected||latestSurveyDate(building.buildingId)||"Not recorded",
+    criticality:a.criticality||"Medium", recommendation:a.recommendation||"Review against the latest survey findings."
+  }));
   const out=[]; let seq=1;
   Object.entries(ASSET_LIBRARY).forEach(([system,names],si)=>names.forEach((name,ai)=>{
     const seed=assetSeed(building.buildingId,si,ai), score=Math.max(28,96-(seed%67));
@@ -462,26 +492,47 @@ function renderAll() {
   $("updatedAt").textContent="Last updated: "+new Date().toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"});
 }
 
-function parseCSV(text) {
-  const lines=text.replace(/\r/g,"").split("\n").filter(Boolean);
-  if(lines.length<2) throw new Error("CSV contains no data rows.");
-  const split=(line)=>{ const out=[]; let cur="",quoted=false; for(let i=0;i<line.length;i++){ const c=line[i]; if(c==='"' && line[i+1]==='"'){cur+='"';i++;} else if(c==='"') quoted=!quoted; else if(c===","&&!quoted){out.push(cur.trim());cur="";} else cur+=c; } out.push(cur.trim()); return out; };
-  const headers=split(lines[0]).map(h=>norm(h).replace(/[^a-z0-9]/g,""));
-  const map = {
-    buildingid:"buildingId", buildingname:"buildingName", clientname:"clientName", buildingaddress:"address", address:"address",
-    buildingtype:"buildingType", rooftype:"roofType", roofageyears:"roofAge", roofage:"roofAge", surveydate:"surveyDate",
-    ragrating:"ragRating", worksrequiredyesno:"worksRequired", worksrequired:"worksRequired", estimatedcosts:"estimatedCosts",
-    estimatedcosts:"estimatedCosts", serviceableliferemainingyears:"serviceableLife", serviceablelife:"serviceableLife",
-    thermalassessment:"thermalAssessment", energyassessment:"energyAssessment", portfolioscore:"portfolioScore",
-    futurecosts:"futureCosts"
-  };
-  return lines.slice(1).map(line=>{
-    const vals=split(line), obj={};
-    headers.forEach((h,i)=>{ if(map[h]) obj[map[h]]=vals[i]; });
-    ["roofAge","estimatedCosts","serviceableLife","portfolioScore","futureCosts"].forEach(k=>obj[k]=Number(String(obj[k]||0).replace(/[^0-9.-]/g,"")));
-    return obj;
-  }).filter(x=>x.buildingId||x.buildingName);
+function splitCSVLine(line){
+  const out=[]; let cur="",quoted=false;
+  for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'&&line[i+1]==='"'){cur+='"';i++;}else if(c==='"')quoted=!quoted;else if(c===","&&!quoted){out.push(cur.trim());cur="";}else cur+=c;}out.push(cur.trim());return out;
 }
+function canonicalHeader(h){return norm(h).replace(/[^a-z0-9]/g,"");}
+const HEADER_MAP={
+ buildingid:"buildingId",buildingname:"buildingName",clientname:"clientName",buildingaddress:"address",address:"address",buildingtype:"buildingType",rooftype:"roofType",roofageyears:"roofAge",roofage:"roofAge",surveydate:"surveyDate",ragrating:"ragRating",worksrequiredyesno:"worksRequired",worksrequired:"worksRequired",estimatedcosts:"estimatedCosts",serviceableliferemainingyears:"serviceableLife",serviceablelife:"serviceableLife",thermalassessment:"thermalAssessment",energyassessment:"energyAssessment",grossfloorarea:"grossFloorArea",roofarea:"roofArea",constructionyear:"constructionYear",occupancy:"occupancy",status:"status",
+ assetid:"assetId",system:"system",assetname:"assetName",condition:"condition",riskrating:"riskRating",healthscore:"healthScore",remaininglife:"remainingLife",replacementcost:"replacementCost",lastinspected:"lastInspected",criticality:"criticality",recommendation:"recommendation",
+ surveyid:"surveyId",surveymethod:"surveyMethod",surveysummary:"surveySummary",finding:"finding",defectcount:"defectCount",moisturereading:"moistureReading",reportreference:"reportReference",
+ defectid:"defectId",description:"description",location:"location",priority:"priority",defectstatus:"defectStatus",estimatedrepaircost:"estimatedRepairCost",recommendedaction:"recommendedAction",relatedassetid:"relatedAssetId",
+ documentid:"documentId",documenttype:"documentType",documenttitle:"documentTitle",documentdate:"documentDate",documenturl:"documentUrl",expirydate:"expiryDate",
+ workid:"workId",workdescription:"workDescription",estimatedcost:"estimatedCost",targetyear:"targetYear",workstatus:"workStatus"
+};
+function parseDatasetCSV(text,type){
+  const lines=text.replace(/^\uFEFF/,"").replace(/\r/g,"").split("\n").filter(x=>x.trim());
+  if(lines.length<2) throw new Error("CSV contains no data rows.");
+  const rawHeaders=splitCSVLine(lines[0]), headers=rawHeaders.map(h=>HEADER_MAP[canonicalHeader(h)]||null);
+  const schema=IMPORT_SCHEMAS[type];
+  const rows=lines.slice(1).map((line,rowIndex)=>{const vals=splitCSVLine(line),obj={};headers.forEach((h,i)=>{if(h)obj[h]=vals[i]??"";});(schema.numeric||[]).forEach(k=>{if(obj[k]!==undefined&&obj[k]!=="")obj[k]=Number(String(obj[k]).replace(/[^0-9.-]/g,""));});obj.__row=rowIndex+2;return obj;}).filter(o=>Object.keys(o).some(k=>k!=="__row"&&String(o[k]).trim()));
+  const errors=[]; rows.forEach(o=>schema.required.forEach(k=>{if(!String(o[k]??"").trim())errors.push(`Row ${o.__row}: ${k} is required`);}));
+  if(errors.length) throw new Error(errors.slice(0,6).join("; ")+(errors.length>6?` (+${errors.length-6} more)`:""));
+  rows.forEach(o=>delete o.__row); return rows;
+}
+function conditionToHealth(condition,risk){const c=norm(condition),r=norm(risk);if(r==="red")return 38;if(r==="green")return 88;return c.includes("poor")?42:c.includes("fair")?58:c.includes("very good")?92:c.includes("good")?80:68;}
+function latestSurveyDate(buildingId){return DATA_STORE.surveys.filter(s=>s.buildingId===buildingId).map(s=>s.surveyDate).sort().reverse()[0]||"";}
+function calculatedRag(building){const ds=DATA_STORE.defects.filter(d=>d.buildingId===building.buildingId);if(ds.some(d=>["urgent","critical","high"].includes(norm(d.priority))))return "Red";if(ds.length||Number(building.serviceableLife)<7)return "Amber";return building.ragRating||"Green";}
+function enrichBuildings(){
+ allBuildings=allBuildings.map(b=>{
+   const surveys=DATA_STORE.surveys.filter(x=>x.buildingId===b.buildingId), defects=DATA_STORE.defects.filter(x=>x.buildingId===b.buildingId), documents=DATA_STORE.documents.filter(x=>x.buildingId===b.buildingId), works=DATA_STORE.works.filter(x=>x.buildingId===b.buildingId);
+   const futureCosts=works.reduce((n,w)=>n+Number(w.estimatedCost||0),0)||Number(b.estimatedCosts||0);
+   const ragRating=calculatedRag(b), worksRequired=works.length||defects.length?"Yes":(b.worksRequired||"No");
+   const temp={...b,ragRating,worksRequired,futureCosts,surveys:surveys.length,defects:defects.length,documents:documents.length,warranties:documents.filter(d=>norm(d.documentType).includes("warranty")).length,status:b.status||"Active",dataReadiness:"Imported factual data"};
+   temp.portfolioScore=computeAnalytics([temp]).health;
+   return temp;
+ });
+ lastPortfolioFiltered=structuredClone(allBuildings); filteredBuildings=structuredClone(allBuildings); selectedBuildingId=allBuildings[0]?.buildingId;
+}
+function setImportStatus(type,count,fileName){const el=$(type+"Status");if(el)el.textContent=`${count} records · ${fileName}`;$("importMessage").textContent=`Imported ${count} ${type} records successfully. Linked intelligence has been recalculated.`;}
+function verifyLinks(type,rows){if(type==="buildings")return;const ids=new Set(allBuildings.map(b=>b.buildingId));const missing=[...new Set(rows.filter(r=>!ids.has(r.buildingId)).map(r=>r.buildingId))];if(missing.length)throw new Error(`Unknown building ID(s): ${missing.join(", ")}. Import Buildings first or correct the IDs.`);if(type==="defects"){const assetIds=new Set(DATA_STORE.assets.map(a=>a.assetId));const bad=[...new Set(rows.filter(r=>r.relatedAssetId&&!assetIds.has(r.relatedAssetId)).map(r=>r.relatedAssetId))];if(bad.length)throw new Error(`Unknown related asset ID(s): ${bad.join(", ")}.`);}}
+async function importDataset(type,file){const rows=parseDatasetCSV(await file.text(),type);verifyLinks(type,rows);if(type==="buildings")allBuildings=rows;else DATA_STORE[type]=rows;enrichBuildings();populateFilters();renderAll();setImportStatus(type,rows.length,file.name);}
+function bindImport(inputId,type){$(inputId).addEventListener("change",async e=>{const file=e.target.files[0];if(!file)return;try{await importDataset(type,file);}catch(err){$("importMessage").textContent=`Import failed: ${err.message}`;alert(`${type} import failed: ${err.message}`);}e.target.value="";});}
 
 document.querySelectorAll(".nav button").forEach(btn=>btn.onclick=()=>{
   document.querySelectorAll(".nav button").forEach(x=>x.classList.remove("active"));
@@ -494,21 +545,14 @@ $("assetBuildingSelect").addEventListener("change",()=>{selectedAssetId=null;ren
 $("assetSystemFilter").addEventListener("change",renderAssets);
 $("assetSearch").addEventListener("input",renderAssets);
 $("searchInput").addEventListener("input",applyFilters);
-$("resetBtn").onclick=()=>{allBuildings=structuredClone(DEMO_DATA);lastPortfolioFiltered=structuredClone(DEMO_DATA);filteredBuildings=structuredClone(DEMO_DATA);selectedBuildingId=allBuildings[0].buildingId;singleSiteMode=false;populateFilters();renderAll();};
+$("resetBtn").onclick=()=>{Object.keys(DATA_STORE).forEach(k=>DATA_STORE[k]=[]);allBuildings=structuredClone(DEMO_DATA);lastPortfolioFiltered=structuredClone(DEMO_DATA);filteredBuildings=structuredClone(DEMO_DATA);selectedBuildingId=allBuildings[0].buildingId;singleSiteMode=false;populateFilters();renderAll();["assets","surveys","defects","documents","works"].forEach(k=>$(k+"Status").textContent=k==="assets"?"Generated demo assets":"No imported records");$("buildingsStatus").textContent="Demo data active";$("importMessage").textContent="Demo data restored.";};
 $("clearSiteSelection").onclick=clearBuildingSelection;
 $("loadTwinBtn").onclick=loadTwinViewer;
 window.addEventListener("message",event=>{const data=event.data||{};if(data.source==="DIGITAL_TWIN"&&data.type==="BUILDING_SELECTED"&&data.buildingId&&allBuildings.some(b=>b.buildingId===data.buildingId))openBuilding(data.buildingId,false);if(data.source==="DIGITAL_TWIN"&&data.type==="ASSET_SELECTED")console.info("Digital twin asset selected:",data);});
-$("csvInput").addEventListener("change", async (e)=>{
-  const file=e.target.files[0]; if(!file) return;
-  try {
-    const rows=parseCSV(await file.text());
-    if(!rows.length) throw new Error("No usable records were found.");
-    allBuildings=rows; lastPortfolioFiltered=structuredClone(rows); filteredBuildings=rows; selectedBuildingId=rows[0]?.buildingId; singleSiteMode=false; populateFilters(); renderAll();
-    alert(`Imported ${rows.length} building records.`);
-  } catch(err) { alert("CSV import failed: "+err.message); }
-  e.target.value="";
-});
 
+$("dataHubBtn").onclick=()=>{$("dataHub").hidden=!$("dataHub").hidden;if(!$("dataHub").hidden)$("dataHub").scrollIntoView({behavior:"smooth",block:"start"});};
+$("closeDataHub").onclick=()=>{$("dataHub").hidden=true;};
+bindImport("buildingsCsv","buildings"); bindImport("assetsCsv","assets"); bindImport("surveysCsv","surveys"); bindImport("defectsCsv","defects"); bindImport("documentsCsv","documents"); bindImport("worksCsv","works");
 populateFilters();
 renderAll();
 </script>
