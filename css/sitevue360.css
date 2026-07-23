@@ -204,4 +204,4 @@ tr:hover td { background:rgba(0,121,193,.045); }
 .import-tile strong{font-size:.92rem}.import-tile span{font-size:.78rem;color:var(--muted)}.import-tile em{font-style:normal;font-size:.72rem;color:#7fd1ff;margin-top:5px;}
 .import-message{margin-top:13px;padding:11px 13px;border-radius:10px;background:rgba(0,0,0,.2);color:#bdd0dd;font-size:.8rem;}
 @media(max-width:900px){.data-import-grid{grid-template-columns:1fr 1fr}}
-@media(max-width:560px){.data-import-grid{grid-template-columns:1fr}} 
+@media(max-width:560px){.data-import-grid{grid-template-columns:1fr}}
