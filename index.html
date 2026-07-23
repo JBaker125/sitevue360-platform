@@ -263,6 +263,7 @@ let lastPortfolioFiltered = structuredClone(DEMO_DATA);
 
 const $ = (id) => document.getElementById(id);
 const currency = (n) => new Intl.NumberFormat("en-GB", {style:"currency",currency:"GBP",maximumFractionDigits:0}).format(n);
+const money = currency;
 const compactMoney = (n) => n >= 1_000_000 ? `£${(n/1_000_000).toFixed(1)}m` : currency(n);
 const norm = (s) => String(s ?? "").trim().toLowerCase();
 const poorOrFail = (v) => ["poor","fail"].includes(norm(v));
