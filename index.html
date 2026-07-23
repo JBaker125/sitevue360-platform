@@ -492,10 +492,27 @@ function renderAll() {
   $("updatedAt").textContent="Last updated: "+new Date().toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"});
 }
 
-function splitCSVLine(line){
-  const out=[]; let cur="",quoted=false;
-  for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'&&line[i+1]==='"'){cur+='"';i++;}else if(c==='"')quoted=!quoted;else if(c===","&&!quoted){out.push(cur.trim());cur="";}else cur+=c;}out.push(cur.trim());return out;
+function parseCSVRows(text){
+  const rows=[]; let row=[], cur="", quoted=false;
+  text=String(text||"").replace(/^\uFEFF/,"").replace(/\r\n?/g,"\n");
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(c==='"'){
+      if(quoted && text[i+1]==='"'){cur+='"';i++;}
+      else quoted=!quoted;
+    } else if(c==="," && !quoted){
+      row.push(cur.trim()); cur="";
+    } else if(c==="\n" && !quoted){
+      row.push(cur.trim());
+      if(row.some(v=>String(v).trim())) rows.push(row);
+      row=[]; cur="";
+    } else cur+=c;
+  }
+  row.push(cur.trim());
+  if(row.some(v=>String(v).trim())) rows.push(row);
+  return rows;
 }
+function splitCSVLine(line){ return parseCSVRows(String(line))[0]||[]; }
 function canonicalHeader(h){return norm(h).replace(/[^a-z0-9]/g,"");}
 const HEADER_MAP={
  buildingid:"buildingId",buildingname:"buildingName",clientname:"clientName",buildingaddress:"address",address:"address",buildingtype:"buildingType",rooftype:"roofType",roofageyears:"roofAge",roofage:"roofAge",surveydate:"surveyDate",ragrating:"ragRating",worksrequiredyesno:"worksRequired",worksrequired:"worksRequired",estimatedcosts:"estimatedCosts",serviceableliferemainingyears:"serviceableLife",serviceablelife:"serviceableLife",thermalassessment:"thermalAssessment",energyassessment:"energyAssessment",grossfloorarea:"grossFloorArea",roofarea:"roofArea",constructionyear:"constructionYear",occupancy:"occupancy",status:"status",
@@ -506,11 +523,13 @@ const HEADER_MAP={
  workid:"workId",workdescription:"workDescription",estimatedcost:"estimatedCost",targetyear:"targetYear",workstatus:"workStatus"
 };
 function parseDatasetCSV(text,type){
-  const lines=text.replace(/^\uFEFF/,"").replace(/\r/g,"").split("\n").filter(x=>x.trim());
-  if(lines.length<2) throw new Error("CSV contains no data rows.");
-  const rawHeaders=splitCSVLine(lines[0]), headers=rawHeaders.map(h=>HEADER_MAP[canonicalHeader(h)]||null);
+  const matrix=parseCSVRows(text);
+  if(matrix.length<2) throw new Error("CSV contains no data rows.");
+  const rawHeaders=matrix[0], headers=rawHeaders.map(h=>HEADER_MAP[canonicalHeader(h)]||null);
   const schema=IMPORT_SCHEMAS[type];
-  const rows=lines.slice(1).map((line,rowIndex)=>{const vals=splitCSVLine(line),obj={};headers.forEach((h,i)=>{if(h)obj[h]=vals[i]??"";});(schema.numeric||[]).forEach(k=>{if(obj[k]!==undefined&&obj[k]!=="")obj[k]=Number(String(obj[k]).replace(/[^0-9.-]/g,""));});obj.__row=rowIndex+2;return obj;}).filter(o=>Object.keys(o).some(k=>k!=="__row"&&String(o[k]).trim()));
+  const missingHeaders=schema.required.filter(k=>!headers.includes(k));
+  if(missingHeaders.length) throw new Error(`Missing required column(s): ${missingHeaders.join(", ")}.`);
+  const rows=matrix.slice(1).map((vals,rowIndex)=>{const obj={};headers.forEach((h,i)=>{if(h)obj[h]=vals[i]??"";});(schema.numeric||[]).forEach(k=>{if(obj[k]!==undefined&&obj[k]!==""){const cleaned=String(obj[k]).replace(/[^0-9.-]/g,"");obj[k]=cleaned===""?0:Number(cleaned);}});obj.__row=rowIndex+2;return obj;}).filter(o=>Object.keys(o).some(k=>k!=="__row"&&String(o[k]).trim()));
   const errors=[]; rows.forEach(o=>schema.required.forEach(k=>{if(!String(o[k]??"").trim())errors.push(`Row ${o.__row}: ${k} is required`);}));
   if(errors.length) throw new Error(errors.slice(0,6).join("; ")+(errors.length>6?` (+${errors.length-6} more)`:""));
   rows.forEach(o=>delete o.__row); return rows;
