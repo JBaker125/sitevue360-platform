@@ -263,7 +263,6 @@ let lastPortfolioFiltered = structuredClone(DEMO_DATA);
 
 const $ = (id) => document.getElementById(id);
 const currency = (n) => new Intl.NumberFormat("en-GB", {style:"currency",currency:"GBP",maximumFractionDigits:0}).format(n);
-window.money = window.money || currency;
 const compactMoney = (n) => n >= 1_000_000 ? `£${(n/1_000_000).toFixed(1)}m` : currency(n);
 const norm = (s) => String(s ?? "").trim().toLowerCase();
 const poorOrFail = (v) => ["poor","fail"].includes(norm(v));
@@ -493,11 +492,69 @@ function renderAll() {
   $("updatedAt").textContent="Last updated: "+new Date().toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"});
 }
 
-function splitCSVLine(line){
-  const out=[]; let cur="",quoted=false;
-  for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'&&line[i+1]==='"'){cur+='"';i++;}else if(c==='"')quoted=!quoted;else if(c===","&&!quoted){out.push(cur.trim());cur="";}else cur+=c;}out.push(cur.trim());return out;
+
+/* SiteVue360 Import Engine V2
+   Replaces only the CSV parsing, validation and linked-data import functions.
+*/
+function parseCSV(text){
+  const source=String(text??"").replace(/^\uFEFF/,"");
+  const records=[];
+  let record=[], field="", quoted=false, rowNumber=1, recordStart=1;
+
+  for(let i=0;i<source.length;i++){
+    const char=source[i];
+    const next=source[i+1];
+
+    if(quoted){
+      if(char==='"' && next==='"'){
+        field+='"';
+        i++;
+      }else if(char==='"'){
+        quoted=false;
+      }else{
+        field+=char;
+      }
+      continue;
+    }
+
+    if(char==='"'){
+      quoted=true;
+    }else if(char===","){
+      record.push(field);
+      field="";
+    }else if(char==="\n"){
+      record.push(field);
+      records.push({values:record,row:recordStart});
+      record=[];
+      field="";
+      rowNumber++;
+      recordStart=rowNumber;
+    }else if(char==="\r"){
+      if(next==="\n") continue;
+      record.push(field);
+      records.push({values:record,row:recordStart});
+      record=[];
+      field="";
+      rowNumber++;
+      recordStart=rowNumber;
+    }else{
+      field+=char;
+    }
+  }
+
+  if(quoted) throw new Error(`CSV contains an unclosed quoted field starting near row ${recordStart}.`);
+  if(field!=="" || record.length){
+    record.push(field);
+    records.push({values:record,row:recordStart});
+  }
+
+  return records.filter(r=>r.values.some(v=>String(v).trim()!==""));
 }
-function canonicalHeader(h){return norm(h).replace(/[^a-z0-9]/g,"");}
+
+function canonicalHeader(h){
+  return norm(String(h??"").replace(/^\uFEFF/,"")).replace(/[^a-z0-9]/g,"");
+}
+
 const HEADER_MAP={
  buildingid:"buildingId",buildingname:"buildingName",clientname:"clientName",buildingaddress:"address",address:"address",buildingtype:"buildingType",rooftype:"roofType",roofageyears:"roofAge",roofage:"roofAge",surveydate:"surveyDate",ragrating:"ragRating",worksrequiredyesno:"worksRequired",worksrequired:"worksRequired",estimatedcosts:"estimatedCosts",serviceableliferemainingyears:"serviceableLife",serviceablelife:"serviceableLife",thermalassessment:"thermalAssessment",energyassessment:"energyAssessment",grossfloorarea:"grossFloorArea",roofarea:"roofArea",constructionyear:"constructionYear",occupancy:"occupancy",status:"status",
  assetid:"assetId",system:"system",assetname:"assetName",condition:"condition",riskrating:"riskRating",healthscore:"healthScore",remaininglife:"remainingLife",replacementcost:"replacementCost",lastinspected:"lastInspected",criticality:"criticality",recommendation:"recommendation",
@@ -506,34 +563,218 @@ const HEADER_MAP={
  documentid:"documentId",documenttype:"documentType",documenttitle:"documentTitle",documentdate:"documentDate",documenturl:"documentUrl",expirydate:"expiryDate",
  workid:"workId",workdescription:"workDescription",estimatedcost:"estimatedCost",targetyear:"targetYear",workstatus:"workStatus"
 };
+
+function parseNumber(value){
+  const clean=String(value??"").trim().replace(/[£,$%\s]/g,"");
+  if(clean==="") return "";
+  const parsed=Number(clean);
+  return Number.isFinite(parsed)?parsed:"";
+}
+
 function parseDatasetCSV(text,type){
-  const lines=text.replace(/^\uFEFF/,"").replace(/\r/g,"").split("\n").filter(x=>x.trim());
-  if(lines.length<2) throw new Error("CSV contains no data rows.");
-  const rawHeaders=splitCSVLine(lines[0]), headers=rawHeaders.map(h=>HEADER_MAP[canonicalHeader(h)]||null);
   const schema=IMPORT_SCHEMAS[type];
-  const rows=lines.slice(1).map((line,rowIndex)=>{const vals=splitCSVLine(line),obj={};headers.forEach((h,i)=>{if(h)obj[h]=vals[i]??"";});(schema.numeric||[]).forEach(k=>{if(obj[k]!==undefined&&obj[k]!=="")obj[k]=Number(String(obj[k]).replace(/[^0-9.-]/g,""));});obj.__row=rowIndex+2;return obj;}).filter(o=>Object.keys(o).some(k=>k!=="__row"&&String(o[k]).trim()));
-  const errors=[]; rows.forEach(o=>schema.required.forEach(k=>{if(!String(o[k]??"").trim())errors.push(`Row ${o.__row}: ${k} is required`);}));
-  if(errors.length) throw new Error(errors.slice(0,6).join("; ")+(errors.length>6?` (+${errors.length-6} more)`:""));
-  rows.forEach(o=>delete o.__row); return rows;
+  if(!schema) throw new Error(`Unknown import type: ${type}.`);
+
+  const records=parseCSV(text);
+  if(records.length<2) throw new Error("CSV contains headings but no data rows.");
+
+  const rawHeaders=records[0].values.map(v=>String(v).trim());
+  const mappedHeaders=rawHeaders.map(h=>HEADER_MAP[canonicalHeader(h)]||null);
+  const recognised=mappedHeaders.filter(Boolean);
+
+  if(!recognised.length){
+    throw new Error("No recognised column headings were found. Use the supplied template headings.");
+  }
+
+  const missingHeadings=schema.required.filter(required=>!mappedHeaders.includes(required));
+  if(missingHeadings.length){
+    throw new Error(`Missing required heading(s): ${missingHeadings.join(", ")}.`);
+  }
+
+  const duplicateHeadings=recognised.filter((h,i)=>recognised.indexOf(h)!==i);
+  if(duplicateHeadings.length){
+    throw new Error(`Duplicate mapped heading(s): ${[...new Set(duplicateHeadings)].join(", ")}.`);
+  }
+
+  const rows=[];
+  const errors=[];
+
+  for(const record of records.slice(1)){
+    const obj={};
+    mappedHeaders.forEach((key,index)=>{
+      if(key) obj[key]=String(record.values[index]??"").trim();
+    });
+
+    if(!Object.values(obj).some(v=>String(v).trim()!=="")) continue;
+
+    for(const key of schema.numeric||[]){
+      if(obj[key]!==undefined && obj[key]!==""){
+        const parsed=parseNumber(obj[key]);
+        if(parsed===""){
+          errors.push(`Row ${record.row}: ${key} must be a number`);
+        }else{
+          obj[key]=parsed;
+        }
+      }
+    }
+
+    for(const key of schema.required){
+      if(String(obj[key]??"").trim()===""){
+        errors.push(`Row ${record.row}: ${key} is required`);
+      }
+    }
+
+    obj.__row=record.row;
+    rows.push(obj);
+  }
+
+  if(!rows.length) throw new Error("No usable data rows were found.");
+  if(errors.length){
+    throw new Error(errors.slice(0,8).join("; ")+(errors.length>8?` (+${errors.length-8} more)`:""));
+  }
+
+  return rows;
 }
-function conditionToHealth(condition,risk){const c=norm(condition),r=norm(risk);if(r==="red")return 38;if(r==="green")return 88;return c.includes("poor")?42:c.includes("fair")?58:c.includes("very good")?92:c.includes("good")?80:68;}
-function latestSurveyDate(buildingId){return DATA_STORE.surveys.filter(s=>s.buildingId===buildingId).map(s=>s.surveyDate).sort().reverse()[0]||"";}
-function calculatedRag(building){const ds=DATA_STORE.defects.filter(d=>d.buildingId===building.buildingId);if(ds.some(d=>["urgent","critical","high"].includes(norm(d.priority))))return "Red";if(ds.length||Number(building.serviceableLife)<7)return "Amber";return building.ragRating||"Green";}
+
+function conditionToHealth(condition,risk){
+  const c=norm(condition),r=norm(risk);
+  if(r==="red")return 38;
+  if(r==="green")return 88;
+  return c.includes("poor")?42:c.includes("fair")?58:c.includes("very good")?92:c.includes("good")?80:68;
+}
+
+function latestSurveyDate(buildingId){
+  return DATA_STORE.surveys.filter(s=>s.buildingId===buildingId).map(s=>s.surveyDate).sort().reverse()[0]||"";
+}
+
+function calculatedRag(building){
+  const ds=DATA_STORE.defects.filter(d=>d.buildingId===building.buildingId);
+  if(ds.some(d=>["urgent","critical","high"].includes(norm(d.priority))))return "Red";
+  if(ds.length||Number(building.serviceableLife)<7)return "Amber";
+  return building.ragRating||"Green";
+}
+
 function enrichBuildings(){
- allBuildings=allBuildings.map(b=>{
-   const surveys=DATA_STORE.surveys.filter(x=>x.buildingId===b.buildingId), defects=DATA_STORE.defects.filter(x=>x.buildingId===b.buildingId), documents=DATA_STORE.documents.filter(x=>x.buildingId===b.buildingId), works=DATA_STORE.works.filter(x=>x.buildingId===b.buildingId);
-   const futureCosts=works.reduce((n,w)=>n+Number(w.estimatedCost||0),0)||Number(b.estimatedCosts||0);
-   const ragRating=calculatedRag(b), worksRequired=works.length||defects.length?"Yes":(b.worksRequired||"No");
-   const temp={...b,ragRating,worksRequired,futureCosts,surveys:surveys.length,defects:defects.length,documents:documents.length,warranties:documents.filter(d=>norm(d.documentType).includes("warranty")).length,status:b.status||"Active",dataReadiness:"Imported factual data"};
-   temp.portfolioScore=computeAnalytics([temp]).health;
-   return temp;
- });
- lastPortfolioFiltered=structuredClone(allBuildings); filteredBuildings=structuredClone(allBuildings); selectedBuildingId=allBuildings[0]?.buildingId;
+  allBuildings=allBuildings.map(b=>{
+    const surveys=DATA_STORE.surveys.filter(x=>x.buildingId===b.buildingId);
+    const defects=DATA_STORE.defects.filter(x=>x.buildingId===b.buildingId);
+    const documents=DATA_STORE.documents.filter(x=>x.buildingId===b.buildingId);
+    const works=DATA_STORE.works.filter(x=>x.buildingId===b.buildingId);
+    const futureCosts=works.reduce((n,w)=>n+Number(w.estimatedCost||0),0)||Number(b.estimatedCosts||0);
+    const ragRating=calculatedRag(b);
+    const worksRequired=works.length||defects.length?"Yes":(b.worksRequired||"No");
+    const temp={...b,ragRating,worksRequired,futureCosts,surveys:surveys.length,defects:defects.length,documents:documents.length,warranties:documents.filter(d=>norm(d.documentType).includes("warranty")).length,status:b.status||"Active",dataReadiness:"Imported factual data"};
+    temp.portfolioScore=computeAnalytics([temp]).health;
+    return temp;
+  });
+  lastPortfolioFiltered=structuredClone(allBuildings);
+  filteredBuildings=structuredClone(allBuildings);
+  if(!allBuildings.some(b=>b.buildingId===selectedBuildingId)) selectedBuildingId=allBuildings[0]?.buildingId||null;
 }
-function setImportStatus(type,count,fileName){const el=$(type+"Status");if(el)el.textContent=`${count} records · ${fileName}`;$("importMessage").textContent=`Imported ${count} ${type} records successfully. Linked intelligence has been recalculated.`;}
-function verifyLinks(type,rows){if(type==="buildings")return;const ids=new Set(allBuildings.map(b=>b.buildingId));const missing=[...new Set(rows.filter(r=>!ids.has(r.buildingId)).map(r=>r.buildingId))];if(missing.length)throw new Error(`Unknown building ID(s): ${missing.join(", ")}. Import Buildings first or correct the IDs.`);if(type==="defects"){const assetIds=new Set(DATA_STORE.assets.map(a=>a.assetId));const bad=[...new Set(rows.filter(r=>r.relatedAssetId&&!assetIds.has(r.relatedAssetId)).map(r=>r.relatedAssetId))];if(bad.length)throw new Error(`Unknown related asset ID(s): ${bad.join(", ")}.`);}}
-async function importDataset(type,file){const rows=parseDatasetCSV(await file.text(),type);verifyLinks(type,rows);if(type==="buildings")allBuildings=rows;else DATA_STORE[type]=rows;enrichBuildings();populateFilters();renderAll();setImportStatus(type,rows.length,file.name);}
-function bindImport(inputId,type){$(inputId).addEventListener("change",async e=>{const file=e.target.files[0];if(!file)return;try{await importDataset(type,file);}catch(err){$("importMessage").textContent=`Import failed: ${err.message}`;alert(`${type} import failed: ${err.message}`);}e.target.value="";});}
+
+function setImportStatus(type,count,fileName,notes=[]){
+  const el=$(type+"Status");
+  if(el) el.textContent=`${count} records · ${fileName}`;
+  const noteText=notes.length?` ${notes.join(" ")}`:"";
+  $("importMessage").textContent=`Imported ${count} ${type} records successfully.${noteText} Linked intelligence has been recalculated.`;
+}
+
+function buildingNumberToken(id){
+  const matches=String(id??"").match(/\d+/g);
+  return matches?String(Number(matches[matches.length-1])):"";
+}
+
+function resolveBuildingLinks(type,rows){
+  if(type==="buildings") return [];
+  const exactIds=new Set(allBuildings.map(b=>b.buildingId));
+  const notes=[];
+  const unresolved=[];
+
+  rows.forEach(row=>{
+    if(exactIds.has(row.buildingId)) return;
+    const token=buildingNumberToken(row.buildingId);
+    const candidates=token?allBuildings.filter(b=>buildingNumberToken(b.buildingId)===token):[];
+    if(candidates.length===1){
+      const previous=row.buildingId;
+      row.buildingId=candidates[0].buildingId;
+      notes.push(`Mapped ${previous} to ${row.buildingId}.`);
+    }else{
+      unresolved.push(`row ${row.__row}: ${row.buildingId||"(blank)"}`);
+    }
+  });
+
+  if(unresolved.length){
+    throw new Error(`Unknown building ID(s): ${unresolved.slice(0,6).join(", ")}${unresolved.length>6?` (+${unresolved.length-6} more)`:""}. Import Buildings first or correct the IDs.`);
+  }
+  return [...new Set(notes)];
+}
+
+function verifyUniqueIds(type,rows){
+  const idKey={buildings:"buildingId",assets:"assetId",surveys:"surveyId",defects:"defectId",documents:"documentId",works:"workId"}[type];
+  const seen=new Set(), duplicates=[];
+  rows.forEach(row=>{
+    const id=String(row[idKey]??"").trim();
+    if(seen.has(id)) duplicates.push(`${id} (row ${row.__row})`);
+    seen.add(id);
+  });
+  if(duplicates.length) throw new Error(`Duplicate ${idKey}(s): ${duplicates.slice(0,6).join(", ")}.`);
+}
+
+function verifyAssetLinks(type,rows){
+  if(!["defects","works"].includes(type)) return;
+  const assetIds=new Set(DATA_STORE.assets.map(a=>a.assetId));
+  const bad=rows.filter(r=>r.relatedAssetId && !assetIds.has(r.relatedAssetId));
+  if(bad.length){
+    throw new Error(`Unknown related asset ID(s): ${bad.slice(0,6).map(r=>`${r.relatedAssetId} (row ${r.__row})`).join(", ")}. Import Assets first or correct the IDs.`);
+  }
+}
+
+async function importDataset(type,file){
+  const rows=parseDatasetCSV(await file.text(),type);
+  verifyUniqueIds(type,rows);
+  const notes=resolveBuildingLinks(type,rows);
+  verifyAssetLinks(type,rows);
+
+  rows.forEach(row=>delete row.__row);
+
+  if(type==="buildings"){
+    allBuildings=rows;
+    // Existing linked records are retained only when they still refer to imported buildings.
+    const validIds=new Set(allBuildings.map(b=>b.buildingId));
+    Object.keys(DATA_STORE).forEach(key=>{
+      DATA_STORE[key]=DATA_STORE[key].filter(record=>validIds.has(record.buildingId));
+    });
+  }else{
+    DATA_STORE[type]=rows;
+  }
+
+  enrichBuildings();
+  populateFilters();
+  renderAll();
+  setImportStatus(type,rows.length,file.name,notes);
+}
+
+function bindImport(inputId,type){
+  const input=$(inputId);
+  if(!input) return;
+  input.addEventListener("change",async event=>{
+    const file=event.target.files?.[0];
+    if(!file) return;
+
+    $("importMessage").textContent=`Checking ${file.name}…`;
+
+    try{
+      await importDataset(type,file);
+    }catch(error){
+      console.error(`${type} import failed`,error);
+      const message=error instanceof Error?error.message:String(error);
+      $("importMessage").textContent=`${type} import failed: ${message}`;
+      alert(`${type} import failed:\n\n${message}`);
+    }finally{
+      event.target.value="";
+    }
+  });
+}
 
 document.querySelectorAll(".nav button").forEach(btn=>btn.onclick=()=>{
   document.querySelectorAll(".nav button").forEach(x=>x.classList.remove("active"));
