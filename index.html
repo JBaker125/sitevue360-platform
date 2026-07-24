@@ -9,9 +9,26 @@
 <meta name="theme-color" content="#0079C1">
 <link rel="stylesheet" href="./css/sitevue360.css">
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-<div class="app">
+
+<div id="authScreen" class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-brand"><img src="./assets/sitevue360-icon.png" alt="SiteVue360"><div><strong>SiteVue360</strong><span>Building Intelligence Operating System</span></div></div>
+    <div class="auth-copy"><div class="eyebrow">Secure platform access</div><h1>Welcome back</h1><p>Sign in to access your assigned client, portfolio and buildings.</p></div>
+    <form id="loginForm" class="auth-form">
+      <label>Email<input id="loginEmail" type="email" autocomplete="username" required placeholder="name@company.co.uk"></label>
+      <label>Password<input id="loginPassword" type="password" autocomplete="current-password" required placeholder="••••••••"></label>
+      <div class="auth-options"><label class="check"><input id="rememberMe" type="checkbox" checked> Remember me</label><button type="button" id="forgotPassword" class="link-btn">Forgot password?</button></div>
+      <button class="primary-btn auth-submit" type="submit">Sign in</button>
+      <div id="authMessage" class="auth-message"></div>
+    </form>
+    <div class="demo-access"><span>Presentation environments</span><button type="button" data-demo-email="general.demo@sitevue360.co.uk">General client demo</button><button type="button" data-demo-email="starbucks.demo@sitevue360.co.uk">Starbucks demo</button></div>
+  </div>
+</div>
+
+<div class="app" id="platformApp" hidden>
   <div class="shell">
     <header class="topbar">
       <div class="brand">
@@ -31,6 +48,10 @@
       </nav>
 
       <div class="top-actions">
+          <select id="clientSwitcher" class="client-switcher" aria-label="Current client" hidden></select>
+          <button class="icon-btn" id="quickAddBtn" title="Quick add">＋ Add</button>
+          <button class="icon-btn" id="notificationsBtn" title="Notifications">🔔 <span id="notificationCount">0</span></button>
+          <button class="profile-chip" id="profileBtn"><span id="profileInitials">SV</span><span><b id="profileName">User</b><small id="profileRole">Role</small></span></button>
         <button class="primary-btn" id="dataHubBtn">Data Import Hub</button>
         <button class="icon-btn" id="resetBtn" title="Restore demo data">Reset Demo</button>
       </div>
@@ -188,6 +209,12 @@
         </article>
       </section>
     </main>
+
+
+<div id="profilePanel" class="side-panel" hidden><div class="side-panel-head"><h2>User profile</h2><button data-close-panel>×</button></div><div id="profilePanelBody"></div><button id="signOutBtn" class="secondary-btn full-btn">Sign out</button></div>
+<div id="notificationsPanel" class="side-panel" hidden><div class="side-panel-head"><h2>Notifications</h2><button data-close-panel>×</button></div><div id="notificationsList" class="notification-list"><div class="empty">No current notifications.</div></div></div>
+<div id="quickAddMenu" class="quick-menu" hidden><button data-open-modal="building">＋ Add Building</button><button data-open-modal="asset">＋ Add Asset</button><button id="openImportExisting">⇧ Import Existing Data</button></div>
+<div id="recordModal" class="modal-backdrop" hidden><div class="record-modal"><div class="side-panel-head"><h2 id="recordModalTitle">Add record</h2><button id="closeRecordModal">×</button></div><form id="recordForm" class="record-form"></form></div></div>
 
     <footer class="footer">
       <span>SiteVue360 Version 0.2 · Five-Site Active Demonstrator</span>
@@ -798,5 +825,96 @@ bindImport("buildingsCsv","buildings"); bindImport("assetsCsv","assets"); bindIm
 populateFilters();
 renderAll();
 </script>
+
+<script>
+const SITEVUE_CONFIG = {
+  supabaseUrl: "https://nufdabfljkmavgorhzoy.supabase.co",
+  publishableKey: "sb_publishable_EObYEL6sLMA7DJBtcvQBuA_Y6ZC_Zs6"
+};
+const sb = window.supabase.createClient(SITEVUE_CONFIG.supabaseUrl, SITEVUE_CONFIG.publishableKey, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+});
+let currentUserProfile=null, currentOrganisation=null, accessibleOrganisations=[];
+const roleLabels={everlast_admin:"Everlast Admin",surveyor:"Surveyor",client_admin:"Client Admin",client_user:"Client User",contractor:"Contractor",read_only:"Read Only"};
+const q=id=>document.getElementById(id);
+function setAuthMessage(message,type="") { q("authMessage").textContent=message; q("authMessage").className=`auth-message ${type}`; }
+function initials(name="SiteVue") { return name.split(/\s+/).map(x=>x[0]).join("").slice(0,2).toUpperCase(); }
+function applyOrganisationTheme(org){
+  currentOrganisation=org;
+  const root=document.documentElement;
+  root.style.setProperty("--client-accent",org?.primary_colour||"#0079C1");
+  document.body.dataset.client=org?.slug||"general-demo";
+  const logo=q("clientLogo");
+  if(org?.logo_url){ logo.src=org.logo_url; logo.hidden=false; } else logo.hidden=true;
+  document.title=`SiteVue360 — ${org?.name||"Building Intelligence Platform"}`;
+}
+async function loadPlatform(session){
+  const {data:profile,error}=await sb.from("profiles").select("id,full_name,job_title,phone").eq("id",session.user.id).maybeSingle();
+  if(error) throw error;
+  const {data:memberships,error:membershipError}=await sb.from("organisation_users").select("role,organisation_id,organisations(id,name,slug,primary_colour,secondary_colour,logo_url,secondary_logo_url)").eq("user_id",session.user.id).eq("is_active",true);
+  if(membershipError) throw membershipError;
+  if(!memberships?.length) throw new Error("This account has not yet been assigned to a SiteVue360 client.");
+  currentUserProfile={...profile,email:session.user.email,role:memberships[0].role};
+  accessibleOrganisations=memberships.map(m=>({...m.organisations,role:m.role}));
+  const switcher=q("clientSwitcher"); switcher.innerHTML="";
+  accessibleOrganisations.forEach(org=>{const o=document.createElement("option");o.value=org.id;o.textContent=org.name;switcher.append(o);});
+  switcher.hidden=accessibleOrganisations.length<2;
+  switcher.onchange=()=>switchOrganisation(switcher.value);
+  q("profileName").textContent=currentUserProfile.full_name||session.user.email;
+  q("profileRole").textContent=roleLabels[currentUserProfile.role]||currentUserProfile.role;
+  q("profileInitials").textContent=initials(currentUserProfile.full_name||session.user.email);
+  q("profilePanelBody").innerHTML=`<div class="profile-card"><div class="profile-avatar">${initials(currentUserProfile.full_name||session.user.email)}</div><h3>${currentUserProfile.full_name||"SiteVue360 User"}</h3><p>${session.user.email}</p><dl><dt>Role</dt><dd>${roleLabels[currentUserProfile.role]||currentUserProfile.role}</dd><dt>Company</dt><dd id="profileCompany">—</dd><dt>Job title</dt><dd>${currentUserProfile.job_title||"—"}</dd></dl></div>`;
+  await switchOrganisation(accessibleOrganisations[0].id);
+  q("authScreen").hidden=true; q("platformApp").hidden=false;
+}
+async function switchOrganisation(id){
+  const org=accessibleOrganisations.find(x=>x.id===id); if(!org)return;
+  applyOrganisationTheme(org); q("clientSwitcher").value=id;
+  const company=q("profileCompany"); if(company) company.textContent=org.name;
+  await loadOrganisationData(id);
+  await loadNotifications(id);
+}
+async function loadOrganisationData(orgId){
+  const [{data:buildings,error:bErr},{data:assets,error:aErr}]=await Promise.all([
+    sb.from("buildings").select("*").eq("organisation_id",orgId).order("building_name"),
+    sb.from("assets").select("*").eq("organisation_id",orgId).order("asset_name")
+  ]);
+  if(bErr||aErr){console.warn(bErr||aErr);return;}
+  if(buildings?.length){
+    const mapped=buildings.map(b=>({buildingId:b.building_code,buildingName:b.building_name,clientName:currentOrganisation.name,address:b.address||"",buildingType:b.building_type||"Commercial",roofType:b.roof_type||"Not recorded",roofAge:b.roof_age||0,surveyDate:b.last_survey_date||"",ragRating:b.rag_rating||"Green",worksRequired:b.works_required?"Yes":"No",estimatedCosts:Number(b.estimated_costs||0),serviceableLife:b.serviceable_life||0,thermalAssessment:b.thermal_rating||"Not assessed",energyAssessment:b.energy_rating||"Not assessed",portfolioScore:b.health_score||0,futureCosts:Number(b.future_costs||0),status:b.status||"Active",dataReadiness:"Live database",grossFloorArea:Number(b.gross_floor_area||0),roofArea:Number(b.roof_area||0),constructionYear:b.construction_year||0,occupancy:b.occupancy||"Operational",surveys:0,defects:0,documents:0,warranties:0,_dbId:b.id}));
+    allBuildings=mapped; filteredBuildings=structuredClone(mapped); lastPortfolioFiltered=structuredClone(mapped); selectedBuildingId=mapped[0]?.buildingId||null;
+    DATA_STORE.buildings=structuredClone(mapped);
+  }
+  if(assets?.length){DATA_STORE.assets=assets.map(a=>({assetId:a.asset_code,buildingId:buildings.find(b=>b.id===a.building_id)?.building_code||"",system:a.system||a.asset_category||"General",assetName:a.asset_name,condition:a.condition||"Unknown",risk:a.risk_rating||"Green",health:Number(a.health_score||0),remainingLife:Number(a.remaining_life||0),replacementCost:Number(a.replacement_cost||0),lastInspected:a.last_inspected||"",_dbId:a.id}));}
+  populateFilters(); renderAll();
+}
+async function loadNotifications(orgId){
+  const {data}=await sb.from("notifications").select("id,title,message,severity,is_read,created_at").eq("organisation_id",orgId).order("created_at",{ascending:false}).limit(20);
+  q("notificationCount").textContent=(data||[]).filter(n=>!n.is_read).length;
+  q("notificationsList").innerHTML=data?.length?data.map(n=>`<article class="notification ${n.severity||"info"}"><b>${n.title}</b><p>${n.message||""}</p><small>${new Date(n.created_at).toLocaleString()}</small></article>`).join(""):'<div class="empty">No current notifications.</div>';
+}
+q("loginForm").addEventListener("submit",async e=>{e.preventDefault();setAuthMessage("Signing in…");const {data,error}=await sb.auth.signInWithPassword({email:q("loginEmail").value.trim(),password:q("loginPassword").value});if(error)return setAuthMessage(error.message,"error");try{await loadPlatform(data.session)}catch(err){setAuthMessage(err.message,"error");}});
+document.querySelectorAll("[data-demo-email]").forEach(btn=>btn.onclick=()=>{q("loginEmail").value=btn.dataset.demoEmail;q("loginPassword").focus();setAuthMessage("Enter the demo password supplied for the presentation account.");});
+q("forgotPassword").onclick=async()=>{const email=q("loginEmail").value.trim();if(!email)return setAuthMessage("Enter your email address first.","error");const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.href.split("#")[0]});setAuthMessage(error?error.message:"Password reset email sent.",error?"error":"success");};
+q("signOutBtn").onclick=async()=>{await sb.auth.signOut();location.reload();};
+q("profileBtn").onclick=()=>q("profilePanel").hidden=false;q("notificationsBtn").onclick=()=>q("notificationsPanel").hidden=false;
+document.querySelectorAll("[data-close-panel]").forEach(b=>b.onclick=()=>b.closest(".side-panel").hidden=true);
+q("quickAddBtn").onclick=()=>q("quickAddMenu").hidden=!q("quickAddMenu").hidden;
+q("openImportExisting").onclick=()=>{q("quickAddMenu").hidden=true;q("dataHub").hidden=false;q("dataHub").scrollIntoView({behavior:"smooth"});};
+const formFields={
+ building:[['building_name','Building name','text',true],['building_code','Building ID / code','text',true],['address','Address','text',false],['building_type','Building type','text',false],['roof_type','Roof type','text',false],['construction_year','Construction year','number',false],['gross_floor_area','Gross floor area (m²)','number',false],['roof_area','Roof area (m²)','number',false]],
+ asset:[['building_id','Building','select',true],['asset_name','Asset name','text',true],['asset_code','Asset ID / code','text',true],['asset_category','Asset category','text',false],['system','System','text',false],['condition','Condition','text',false],['remaining_life','Remaining life (years)','number',false],['replacement_cost','Replacement cost (£)','number',false]]
+};
+function openRecordModal(type){
+ q("quickAddMenu").hidden=true;q("recordModal").hidden=false;q("recordModalTitle").textContent=type==='building'?'Add Building':'Add Asset';
+ q("recordForm").dataset.type=type;
+ q("recordForm").innerHTML=formFields[type].map(([name,label,input,required])=>{if(input==='select')return `<label>${label}<select name="${name}" ${required?'required':''}>${allBuildings.map(b=>`<option value="${b._dbId||''}">${b.buildingName}</option>`).join('')}</select></label>`;return `<label>${label}<input name="${name}" type="${input}" ${required?'required':''}></label>`}).join('')+'<div class="form-actions"><button type="button" class="secondary-btn" id="cancelRecord">Cancel</button><button class="primary-btn" type="submit">Save record</button></div><div id="recordMessage" class="auth-message"></div>';
+ q("cancelRecord").onclick=()=>q("recordModal").hidden=true;
+}
+document.querySelectorAll("[data-open-modal]").forEach(b=>b.onclick=()=>openRecordModal(b.dataset.openModal));q("closeRecordModal").onclick=()=>q("recordModal").hidden=true;
+q("recordForm").addEventListener("submit",async e=>{e.preventDefault();const type=e.currentTarget.dataset.type;const payload=Object.fromEntries(new FormData(e.currentTarget));Object.keys(payload).forEach(k=>{if(payload[k]==='')delete payload[k];else if(['construction_year','gross_floor_area','roof_area','remaining_life','replacement_cost'].includes(k))payload[k]=Number(payload[k]);});payload.organisation_id=currentOrganisation.id;payload.created_by=(await sb.auth.getUser()).data.user.id;const table=type==='building'?'buildings':'assets';const {error}=await sb.from(table).insert(payload);if(error){q("recordMessage").textContent=error.message;q("recordMessage").className='auth-message error';return;}q("recordModal").hidden=true;await loadOrganisationData(currentOrganisation.id);});
+(async()=>{const {data:{session}}=await sb.auth.getSession();if(session){try{await loadPlatform(session)}catch(err){setAuthMessage(err.message,"error");}}})();
+</script>
+
 </body>
 </html>
