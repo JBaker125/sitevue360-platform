@@ -15,7 +15,9 @@
 
 <div id="authScreen" class="auth-screen">
   <div class="auth-card">
-    <div class="auth-brand"><img src="./assets/sitevue360-logo.png" alt="SiteVue360"><div><strong>SiteVue360</strong><span>Building Intelligence Operating System</span></div></div>
+    <div class="auth-brand auth-brand-hero">
+      <img src="./assets/sitevue360-logo.png" alt="SiteVue360 — Comprehensive from every perspective">
+    </div>
     <div class="auth-copy"><div class="eyebrow">Secure platform access</div><h1>Welcome back</h1><p>Sign in to access your assigned client, portfolio and buildings.</p></div>
     <form id="loginForm" class="auth-form">
       <label>Email<input id="loginEmail" type="email" autocomplete="username" required placeholder="name@company.co.uk"></label>
@@ -31,13 +33,8 @@
 <div class="app" id="platformApp" hidden>
   <div class="shell">
     <header class="topbar">
-      <div class="brand">
-        <div class="sitevue-logo-plate">
-          <img class="sitevue-brand-logo" src="./assets/sitevue360-logo.png" alt="SiteVue360 logo">
-        </div>
-        <div id="clientLogoPlate" class="client-logo-plate" hidden>
-          <img id="clientLogo" class="client-logo" src="" alt="Client logo">
-        </div>
+      <div class="brand sitevue-header-brand">
+        <img class="sitevue-brand-logo" src="./assets/sitevue360-logo.png" alt="SiteVue360 — Comprehensive from every perspective">
       </div>
 
       <nav class="nav" aria-label="Primary views">
@@ -57,6 +54,24 @@
         <button class="icon-btn" id="resetBtn" title="Restore demo data">Reset Demo</button>
       </div>
     </header>
+
+    <section id="clientBrandBar" class="client-brand-bar" aria-label="Current client">
+      <div class="client-brand-identity">
+        <span class="current-client-label">Current Client</span>
+        <div id="clientMainLogoWrap" class="client-main-logo-wrap" hidden>
+          <img id="clientLogo" class="client-main-logo" src="" alt="Client logo">
+        </div>
+        <div class="client-brand-copy">
+          <strong id="clientDisplayName">SiteVue360 General Demo</strong>
+          <span id="clientDisplaySubtitle">General Demo Environment</span>
+        </div>
+      </div>
+      <img id="clientWatermark" class="client-watermark" src="" alt="" hidden>
+      <div class="client-brand-actions">
+        <button class="secondary-btn" id="switchClientBtn" type="button">⇄ Switch Client</button>
+        <button class="secondary-btn" id="clientSettingsBtn" type="button">⚙ Client Settings</button>
+      </div>
+    </section>
 
     <main class="main">
       <section class="data-hub card" id="dataHub" hidden>
@@ -215,6 +230,42 @@
 <div id="profilePanel" class="side-panel" hidden><div class="side-panel-head"><h2>User profile</h2><button data-close-panel>×</button></div><div id="profilePanelBody"></div><button id="signOutBtn" class="secondary-btn full-btn">Sign out</button></div>
 <div id="notificationsPanel" class="side-panel" hidden><div class="side-panel-head"><h2>Notifications</h2><button data-close-panel>×</button></div><div id="notificationsList" class="notification-list"><div class="empty">No current notifications.</div></div></div>
 <div id="quickAddMenu" class="quick-menu" hidden><button data-open-modal="building">＋ Add Building</button><button data-open-modal="asset">＋ Add Asset</button><button id="openImportExisting">⇧ Import Existing Data</button></div>
+<div id="clientModal" class="modal-backdrop" hidden>
+  <div class="record-modal client-modal-card">
+    <div class="side-panel-head"><h2 id="clientModalTitle">Client Settings</h2><button type="button" id="closeClientModal">×</button></div>
+    <form id="clientForm" class="client-config-form">
+      <section class="client-form-section">
+        <h3>1. Basic Information</h3>
+        <div class="client-form-grid two-col">
+          <label>Client / Organisation Name<input name="name" id="clientNameInput" required placeholder="e.g. Starbucks UK"></label>
+          <label>Client Short Name (for URL)<input name="slug" id="clientSlugInput" required placeholder="e.g. starbucks-uk"></label>
+        </div>
+      </section>
+      <section class="client-form-section">
+        <h3>2. Branding</h3>
+        <div class="client-branding-fields">
+          <label class="upload-field">Main Logo (Header)
+            <span class="upload-drop"><b>☁</b><span>Upload main logo</span><small>PNG or JPG</small></span>
+            <input id="clientMainLogoInput" type="file" accept="image/png,image/jpeg,image/webp">
+          </label>
+          <label class="upload-field">Watermark Logo
+            <span class="upload-drop"><b>☁</b><span>Upload watermark</span><small>PNG or JPG</small></span>
+            <input id="clientWatermarkInput" type="file" accept="image/png,image/jpeg,image/webp">
+          </label>
+          <label>Theme Colour
+            <div class="colour-input-row"><input name="primary_colour" id="clientColourInput" type="text" value="#0079C1" pattern="^#[0-9A-Fa-f]{6}$"><input id="clientColourPicker" type="color" value="#0079C1"></div>
+            <small>Primary colour used in the client bar and client modules.</small>
+          </label>
+        </div>
+        <div class="logo-preview-row"><div id="mainLogoPreview" class="logo-preview">Main logo preview</div><div id="watermarkPreview" class="logo-preview watermark-preview">Watermark preview</div></div>
+      </section>
+      <input type="hidden" id="mainLogoData" name="logo_url"><input type="hidden" id="watermarkLogoData" name="secondary_logo_url">
+      <div class="form-actions"><button type="button" class="secondary-btn" id="cancelClientModal">Cancel</button><button type="submit" class="primary-btn">Save Client</button></div>
+      <div id="clientFormMessage" class="auth-message"></div>
+    </form>
+  </div>
+</div>
+
 <div id="recordModal" class="modal-backdrop" hidden><div class="record-modal"><div class="side-panel-head"><h2 id="recordModalTitle">Add record</h2><button id="closeRecordModal">×</button></div><form id="recordForm" class="record-form"></form></div></div>
 
     <footer class="footer">
@@ -843,23 +894,30 @@ function initials(name="SiteVue") { return name.split(/\s+/).map(x=>x[0]).join("
 function applyOrganisationTheme(org){
   currentOrganisation=org;
   const root=document.documentElement;
-  // Keep the core SiteVue360 interface visually consistent for every client.
-  root.style.setProperty("--client-accent","#0079C1");
+  const accent=(org?.primary_colour && /^#[0-9A-Fa-f]{6}$/.test(org.primary_colour)) ? org.primary_colour : "#0079C1";
+  root.style.setProperty("--client-accent",accent);
+  root.style.setProperty("--client-accent-rgb",hexToRgb(accent));
   document.body.dataset.client=org?.slug||"general-demo";
-  const logo=q("clientLogo");
-  const logoPlate=q("clientLogoPlate");
-  if(logo && logoPlate){
-    const localClientLogo = org?.slug === "starbucks" ? "./assets/starbucks-wordmark.png" : null;
-    const logoSource = localClientLogo || org?.logo_url || null;
-    if(logoSource){
-      logo.src=logoSource;
-      logoPlate.hidden=false;
-    } else {
-      logo.removeAttribute("src");
-      logoPlate.hidden=true;
-    }
+
+  const isStarbucks=org?.slug==="starbucks";
+  const mainLogo=isStarbucks ? "./assets/starbucks-logo.jpg" : (org?.logo_url||null);
+  const watermark=isStarbucks ? "./assets/starbucks-wordmark.png" : (org?.secondary_logo_url||org?.logo_url||null);
+  const logo=q("clientLogo"), logoWrap=q("clientMainLogoWrap"), watermarkEl=q("clientWatermark");
+  if(logo && logoWrap){
+    if(mainLogo){ logo.src=mainLogo; logoWrap.hidden=false; }
+    else { logo.removeAttribute("src"); logoWrap.hidden=true; }
   }
+  if(watermarkEl){
+    if(watermark){ watermarkEl.src=watermark; watermarkEl.hidden=false; }
+    else { watermarkEl.removeAttribute("src"); watermarkEl.hidden=true; }
+  }
+  q("clientDisplayName").textContent=org?.name||"SiteVue360 General Demo";
+  q("clientDisplaySubtitle").textContent=isStarbucks?"Starbucks Environment":`${org?.name||"General Demo"} Environment`;
   document.title=`SiteVue360 — ${org?.name||"Building Intelligence Platform"}`;
+}
+function hexToRgb(hex){
+  const n=parseInt(hex.replace("#",""),16);
+  return `${(n>>16)&255},${(n>>8)&255},${n&255}`;
 }
 async function loadPlatform(session){
   const {data:profile,error}=await sb.from("profiles").select("id,full_name,job_title,phone").eq("id",session.user.id).maybeSingle();
@@ -868,6 +926,7 @@ async function loadPlatform(session){
   if(membershipError) throw membershipError;
   if(!memberships?.length) throw new Error("This account has not yet been assigned to a SiteVue360 client.");
   currentUserProfile={...profile,email:session.user.email,role:memberships[0].role};
+  q("clientSettingsBtn").hidden=!["everlast_admin","client_admin"].includes(currentUserProfile.role);
   accessibleOrganisations=memberships.map(m=>({...m.organisations,role:m.role}));
   const switcher=q("clientSwitcher"); switcher.innerHTML="";
   accessibleOrganisations.forEach(org=>{const o=document.createElement("option");o.value=org.id;o.textContent=org.name;switcher.append(o);});
@@ -906,6 +965,39 @@ async function loadNotifications(orgId){
   q("notificationCount").textContent=(data||[]).filter(n=>!n.is_read).length;
   q("notificationsList").innerHTML=data?.length?data.map(n=>`<article class="notification ${n.severity||"info"}"><b>${n.title}</b><p>${n.message||""}</p><small>${new Date(n.created_at).toLocaleString()}</small></article>`).join(""):'<div class="empty">No current notifications.</div>';
 }
+
+q("switchClientBtn").onclick=()=>{const switcher=q("clientSwitcher");if(switcher && !switcher.hidden){switcher.focus();switcher.click();}else q("profilePanel").hidden=false;};
+q("clientSettingsBtn").onclick=()=>openClientModal("edit");
+q("closeClientModal").onclick=q("cancelClientModal").onclick=()=>q("clientModal").hidden=true;
+q("clientColourPicker").oninput=e=>{q("clientColourInput").value=e.target.value.toUpperCase();};
+q("clientColourInput").oninput=e=>{if(/^#[0-9A-Fa-f]{6}$/.test(e.target.value))q("clientColourPicker").value=e.target.value;};
+function readLogoFile(input,dataTarget,previewTarget){
+  input.onchange=()=>{const file=input.files?.[0];if(!file)return;if(file.size>2*1024*1024){q("clientFormMessage").textContent="Logo files must be 2 MB or smaller.";q("clientFormMessage").className="auth-message error";return;}const reader=new FileReader();reader.onload=()=>{q(dataTarget).value=reader.result;q(previewTarget).innerHTML=`<img src="${reader.result}" alt="Logo preview">`;};reader.readAsDataURL(file);};
+}
+readLogoFile(q("clientMainLogoInput"),"mainLogoData","mainLogoPreview");
+readLogoFile(q("clientWatermarkInput"),"watermarkLogoData","watermarkPreview");
+function openClientModal(mode="edit"){
+  const canManage=currentUserProfile?.role==="everlast_admin"||currentUserProfile?.role==="client_admin";
+  if(!canManage){q("notificationsPanel").hidden=false;return;}
+  q("clientModal").hidden=false;q("clientModalTitle").textContent=mode==="new"?"Add New Client / Organisation":"Client Settings";
+  q("clientForm").dataset.mode=mode;
+  const org=mode==="edit"?currentOrganisation:null;
+  q("clientNameInput").value=org?.name||"";q("clientSlugInput").value=org?.slug||"";
+  const colour=org?.primary_colour||"#0079C1";q("clientColourInput").value=colour;q("clientColourPicker").value=colour;
+  q("mainLogoData").value=org?.logo_url||"";q("watermarkLogoData").value=org?.secondary_logo_url||"";
+  q("mainLogoPreview").innerHTML=org?.logo_url?`<img src="${org.logo_url}" alt="Main logo preview">`:"Main logo preview";
+  q("watermarkPreview").innerHTML=org?.secondary_logo_url?`<img src="${org.secondary_logo_url}" alt="Watermark preview">`:"Watermark preview";
+  q("clientFormMessage").textContent="";
+}
+q("clientForm").addEventListener("submit",async e=>{
+  e.preventDefault();const form=new FormData(e.currentTarget);const payload={name:form.get("name").trim(),slug:form.get("slug").trim().toLowerCase().replace(/[^a-z0-9-]+/g,"-"),primary_colour:form.get("primary_colour"),logo_url:form.get("logo_url")||null,secondary_logo_url:form.get("secondary_logo_url")||null};
+  let result;
+  if(e.currentTarget.dataset.mode==="new") result=await sb.from("organisations").insert(payload).select().single();
+  else result=await sb.from("organisations").update(payload).eq("id",currentOrganisation.id).select().single();
+  if(result.error){q("clientFormMessage").textContent=result.error.message;q("clientFormMessage").className="auth-message error";return;}
+  Object.assign(currentOrganisation,result.data);applyOrganisationTheme(currentOrganisation);q("clientModal").hidden=true;
+});
+
 q("loginForm").addEventListener("submit",async e=>{e.preventDefault();setAuthMessage("Signing in…");const {data,error}=await sb.auth.signInWithPassword({email:q("loginEmail").value.trim(),password:q("loginPassword").value});if(error)return setAuthMessage(error.message,"error");try{await loadPlatform(data.session)}catch(err){setAuthMessage(err.message,"error");}});
 document.querySelectorAll("[data-demo-email]").forEach(btn=>btn.onclick=()=>{q("loginEmail").value=btn.dataset.demoEmail;q("loginPassword").focus();setAuthMessage("Enter the demo password supplied for the presentation account.");});
 q("forgotPassword").onclick=async()=>{const email=q("loginEmail").value.trim();if(!email)return setAuthMessage("Enter your email address first.","error");const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.href.split("#")[0]});setAuthMessage(error?error.message:"Password reset email sent.",error?"error":"success");};
@@ -913,6 +1005,7 @@ q("signOutBtn").onclick=async()=>{await sb.auth.signOut();location.reload();};
 q("profileBtn").onclick=()=>q("profilePanel").hidden=false;q("notificationsBtn").onclick=()=>q("notificationsPanel").hidden=false;
 document.querySelectorAll("[data-close-panel]").forEach(b=>b.onclick=()=>b.closest(".side-panel").hidden=true);
 q("quickAddBtn").onclick=()=>q("quickAddMenu").hidden=!q("quickAddMenu").hidden;
+if(q("openNewClient"))q("openNewClient").onclick=()=>{q("quickAddMenu").hidden=true;openClientModal("new");};
 q("openImportExisting").onclick=()=>{q("quickAddMenu").hidden=true;q("dataHub").hidden=false;q("dataHub").scrollIntoView({behavior:"smooth"});};
 const formFields={
  building:[['building_name','Building name','text',true],['building_code','Building ID / code','text',true],['address','Address','text',false],['building_type','Building type','text',false],['roof_type','Roof type','text',false],['construction_year','Construction year','number',false],['gross_floor_area','Gross floor area (m²)','number',false],['roof_area','Roof area (m²)','number',false]],
