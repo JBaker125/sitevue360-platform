@@ -39,7 +39,7 @@
 
       <nav class="nav" aria-label="Primary views">
         <button class="active" data-view="executive">Executive</button>
-        <button data-view="portfolio">Portfolio</button>
+        <button data-view="portfolio">Buildings</button>
         <button data-view="technical">Technical</button>
         <button data-view="assets">Assets</button>
         <button data-view="intelligence">Intelligence</button>
@@ -153,19 +153,28 @@
         </div>
       </section>
 
-      <section id="portfolio" class="view">
-        <div class="hero">
-          <div><div class="eyebrow">Portfolio intelligence</div><h1>Building portfolio</h1><p class="subtle">Filter, compare and review every Building Intelligence Record.</p></div>
+      <section id="portfolio" class="view building-module">
+        <div class="hero building-page-hero">
+          <div><div class="eyebrow">Building intelligence</div><h1>Buildings</h1><p class="subtle">Manage the estate, open a building workspace and understand where attention is required.</p></div>
+          <button class="primary-btn" id="addBuildingPageBtn">＋ Add Building</button>
         </div>
-        <article class="card">
-          <div class="panel-title"><div><h2>Portfolio register</h2><div class="subtle">Click any row to open that property.</div></div><span class="badge" id="portfolioRowCount">0 buildings</span></div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>ID</th><th>Building</th><th>Client</th><th>Type</th><th>Risk</th><th>Works</th><th>Life</th><th>Thermal</th><th>Energy</th><th>Future cost</th></tr></thead>
-              <tbody id="portfolioTable"></tbody>
-            </table>
+        <div class="building-command card">
+          <input id="buildingPageSearch" placeholder="Search by building, code, address or type…">
+          <select id="buildingConditionFilter"><option value="">All conditions</option><option>Excellent</option><option>Good</option><option>Monitor</option><option>Needs Attention</option><option>Critical</option></select>
+          <select id="buildingStatusFilter"><option value="">All statuses</option><option>Active</option><option>Inactive</option><option>Planned</option></select>
+          <span class="badge" id="portfolioRowCount">0 buildings</span>
+        </div>
+        <div id="buildingCardGrid" class="building-card-grid"></div>
+        <div id="buildingWorkspace" class="building-workspace" hidden>
+          <div class="workspace-hero card">
+            <button class="workspace-back" id="closeBuildingWorkspace">← All buildings</button>
+            <div class="workspace-title-row"><div><div class="eyebrow" id="workspaceCode">BUILDING</div><h1 id="workspaceName">Building</h1><p id="workspaceAddress" class="subtle"></p></div><div class="health-orb"><strong id="workspaceHealth">0%</strong><span id="workspaceCondition">Condition</span></div></div>
+            <div id="workspaceMeta" class="workspace-meta"></div>
           </div>
-        </article>
+          <div class="workspace-tabs" id="workspaceTabs"><button class="active" data-workspace-tab="overview">Overview</button><button data-workspace-tab="assets">Assets</button><button data-workspace-tab="surveys">Surveys</button><button data-workspace-tab="defects">Defects</button><button data-workspace-tab="works">Works</button><button data-workspace-tab="documents">Documents</button><button data-workspace-tab="timeline">Timeline</button><button data-workspace-tab="settings">Settings</button></div>
+          <div id="workspaceContent"></div>
+        </div>
+        <div class="legacy-portfolio" hidden><table><tbody id="portfolioTable"></tbody></table></div>
       </section>
 
       <section id="technical" class="view">
@@ -1008,7 +1017,7 @@ q("quickAddBtn").onclick=()=>q("quickAddMenu").hidden=!q("quickAddMenu").hidden;
 if(q("openNewClient"))q("openNewClient").onclick=()=>{q("quickAddMenu").hidden=true;openClientModal("new");};
 q("openImportExisting").onclick=()=>{q("quickAddMenu").hidden=true;q("dataHub").hidden=false;q("dataHub").scrollIntoView({behavior:"smooth"});};
 const formFields={
- building:[['building_name','Building name','text',true],['building_code','Building ID / code','text',true],['address','Address','text',false],['building_type','Building type','text',false],['roof_type','Roof type','text',false],['construction_year','Construction year','number',false],['gross_floor_area','Gross floor area (m²)','number',false],['roof_area','Roof area (m²)','number',false]],
+ building:[['building_name','Building name','text',true],['building_code','Building ID / code','text',true],['address','Address','text',false],['building_type','Building type','text',false],['status','Status','text',false],['occupancy','Occupancy','text',false],['construction_year','Construction year','number',false],['gross_floor_area','Gross floor area (m²)','number',false],['floor_count','Number of floors','number',false],['health_score','Health score (%)','number',false],['condition','Condition','text',false],['survey_due_date','Survey due date','date',false],['digital_twin_url','Digital twin URL','url',false],['image_url','Building image URL','url',false]],
  asset:[['building_id','Building','select',true],['asset_name','Asset name','text',true],['asset_code','Asset ID / code','text',true],['asset_category','Asset category','text',false],['system','System','text',false],['condition','Condition','text',false],['remaining_life','Remaining life (years)','number',false],['replacement_cost','Replacement cost (£)','number',false]]
 };
 function openRecordModal(type){
@@ -1018,8 +1027,27 @@ function openRecordModal(type){
  q("cancelRecord").onclick=()=>q("recordModal").hidden=true;
 }
 document.querySelectorAll("[data-open-modal]").forEach(b=>b.onclick=()=>openRecordModal(b.dataset.openModal));q("closeRecordModal").onclick=()=>q("recordModal").hidden=true;
-q("recordForm").addEventListener("submit",async e=>{e.preventDefault();const type=e.currentTarget.dataset.type;const payload=Object.fromEntries(new FormData(e.currentTarget));Object.keys(payload).forEach(k=>{if(payload[k]==='')delete payload[k];else if(['construction_year','gross_floor_area','roof_area','remaining_life','replacement_cost'].includes(k))payload[k]=Number(payload[k]);});payload.organisation_id=currentOrganisation.id;payload.created_by=(await sb.auth.getUser()).data.user.id;const table=type==='building'?'buildings':'assets';const {error}=await sb.from(table).insert(payload);if(error){q("recordMessage").textContent=error.message;q("recordMessage").className='auth-message error';return;}q("recordModal").hidden=true;await loadOrganisationData(currentOrganisation.id);});
+q("recordForm").addEventListener("submit",async e=>{e.preventDefault();const type=e.currentTarget.dataset.type;const payload=Object.fromEntries(new FormData(e.currentTarget));Object.keys(payload).forEach(k=>{if(payload[k]==='')delete payload[k];else if(['construction_year','gross_floor_area','roof_area','floor_count','health_score','remaining_life','replacement_cost'].includes(k))payload[k]=Number(payload[k]);});payload.organisation_id=currentOrganisation.id;payload.created_by=(await sb.auth.getUser()).data.user.id;const table=type==='building'?'buildings':'assets';const {error}=await sb.from(table).insert(payload);if(error){q("recordMessage").textContent=error.message;q("recordMessage").className='auth-message error';return;}q("recordModal").hidden=true;await loadOrganisationData(currentOrganisation.id);});
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session){try{await loadPlatform(session)}catch(err){setAuthMessage(err.message,"error");}}})();
+</script>
+
+
+<script>
+// Sprint 1B.1 — Building Workspace
+let activeWorkspaceTab='overview';
+function buildingCondition(b){const h=Number(b.portfolioScore||b.healthScore||0);if(h>=95)return'Excellent';if(h>=80)return'Good';if(h>=60)return'Monitor';if(h>=40)return'Needs Attention';return'Critical';}
+function conditionClass(c){return String(c).toLowerCase().replace(/\s+/g,'-');}
+function buildingImage(b){return b.imageUrl||b.image_url||'';}
+function visibleBuildingCards(){const qv=(q('buildingPageSearch')?.value||'').toLowerCase(), c=q('buildingConditionFilter')?.value||'', st=q('buildingStatusFilter')?.value||'';return allBuildings.filter(b=>(!qv||[b.buildingName,b.buildingId,b.address,b.buildingType].join(' ').toLowerCase().includes(qv))&&(!c||buildingCondition(b)===c)&&(!st||String(b.status||'Active')===st));}
+renderPortfolio=function(){
+ const grid=q('buildingCardGrid'); if(!grid)return; const data=visibleBuildingCards(); q('portfolioRowCount').textContent=`${data.length} building${data.length===1?'':'s'}`;
+ grid.innerHTML=data.map(b=>{const cond=buildingCondition(b),img=buildingImage(b),assets=(DATA_STORE.assets||[]).filter(a=>a.buildingId===b.buildingId).length,defects=Number(b.defects||0);return `<article class="building-card" data-building-workspace="${b.buildingId}"><div class="building-card-image ${img?'has-image':''}" ${img?`style="background-image:url('${img.replace(/'/g,'%27')}')"`:''}><span class="building-status">${b.status||'Active'}</span><span class="condition-pill ${conditionClass(cond)}">${cond}</span></div><div class="building-card-body"><div class="building-card-head"><div><small>${b.buildingId}</small><h2>${b.buildingName}</h2><p>${b.address||'Address not recorded'}</p></div><div class="mini-health"><strong>${Number(b.portfolioScore||0)}%</strong><span>Health</span></div></div><div class="building-card-stats"><span><b>${assets}</b> Assets</span><span><b>${defects}</b> Defects</span><span><b>${b.surveys||0}</b> Surveys</span><span><b>${b.serviceableLife||0}</b> Years</span></div><button class="open-workspace-btn">Open Building Workspace →</button></div></article>`}).join('')||'<div class="empty card">No buildings match the current filters.</div>';
+ document.querySelectorAll('[data-building-workspace]').forEach(el=>el.onclick=()=>openBuildingWorkspace(el.dataset.buildingWorkspace));
+};
+function openBuildingWorkspace(id){selectedBuildingId=id;activeWorkspaceTab='overview';q('buildingCardGrid').hidden=true;q('buildingWorkspace').hidden=false;renderBuildingWorkspace();window.scrollTo({top:0,behavior:'smooth'});}
+function renderBuildingWorkspace(){const b=allBuildings.find(x=>x.buildingId===selectedBuildingId);if(!b)return;q('workspaceCode').textContent=b.buildingId;q('workspaceName').textContent=b.buildingName;q('workspaceAddress').textContent=b.address||'Address not recorded';q('workspaceHealth').textContent=`${Number(b.portfolioScore||0)}%`;q('workspaceCondition').textContent=buildingCondition(b);q('workspaceMeta').innerHTML=`<span><small>Client</small><b>${b.clientName||currentOrganisation?.name||'—'}</b></span><span><small>Type</small><b>${b.buildingType||'—'}</b></span><span><small>Constructed</small><b>${b.constructionYear||'—'}</b></span><span><small>Floor area</small><b>${Number(b.grossFloorArea||0).toLocaleString()} m²</b></span><span><small>Occupancy</small><b>${b.occupancy||'—'}</b></span><span><small>Digital twin</small><b>${b.digitalTwinUrl?'Available':'Not linked'}</b></span>`;renderWorkspaceContent(b);}
+function renderWorkspaceContent(b){const assets=(DATA_STORE.assets||[]).filter(a=>a.buildingId===b.buildingId), defects=(DATA_STORE.defects||[]).filter(x=>x.buildingId===b.buildingId), works=(DATA_STORE.works||[]).filter(x=>x.buildingId===b.buildingId);let h='';if(activeWorkspaceTab==='overview')h=`<div class="workspace-kpis"><article class="card"><small>Building health</small><strong>${b.portfolioScore||0}%</strong><span>${buildingCondition(b)}</span></article><article class="card"><small>Registered assets</small><strong>${assets.length}</strong><span>Maintainable items</span></article><article class="card"><small>Open defects</small><strong>${defects.length||b.defects||0}</strong><span>Current issues</span></article><article class="card"><small>Future liability</small><strong>${compactMoney(Number(b.futureCosts||0))}</strong><span>Planned exposure</span></article></div><div class="workspace-grid"><article class="card"><div class="panel-title"><h2>Building profile</h2></div><div class="detail-list"><div><span>Status</span><b>${b.status||'Active'}</b></div><div><span>Building type</span><b>${b.buildingType||'—'}</b></div><div><span>Construction year</span><b>${b.constructionYear||'—'}</b></div><div><span>Gross internal area</span><b>${Number(b.grossFloorArea||0).toLocaleString()} m²</b></div><div><span>Latest survey</span><b>${b.surveyDate||'Not recorded'}</b></div><div><span>Survey due</span><b>${b.surveyDueDate||'Not scheduled'}</b></div></div></article><article class="card"><div class="panel-title"><h2>Intelligence summary</h2><span class="condition-pill ${conditionClass(buildingCondition(b))}">${buildingCondition(b)}</span></div><p class="workspace-narrative">${recommendationFor(b)}</p><div class="reco"><b>Next priority</b><br>${Number(b.serviceableLife||0)<3?'Prepare immediate intervention and funding approval.':'Maintain planned inspection and lifecycle programme.'}</div></article></div>`;else if(activeWorkspaceTab==='assets')h=`<article class="card"><div class="panel-title"><h2>Assets</h2><span class="badge">${assets.length}</span></div>${assets.length?assets.map(a=>`<div class="workspace-row"><b>${a.assetName||a.name}</b><span>${a.system||'General'}</span><span>${a.condition||'Unknown'}</span></div>`).join(''):'<div class="empty">No assets have been assigned to this building yet.</div>'}</article>`;else if(activeWorkspaceTab==='settings')h=`<article class="card"><div class="panel-title"><h2>Building settings</h2></div><p class="subtle">Edit and deletion controls will use the organisation permissions already established in Sprint 1A.</p><button class="primary-btn" id="workspaceEditBuilding">Edit Building</button></article>`;else h=`<article class="card"><div class="panel-title"><h2>${activeWorkspaceTab[0].toUpperCase()+activeWorkspaceTab.slice(1)}</h2></div><div class="empty">This workspace is ready for the ${activeWorkspaceTab} module in the next release.</div></article>`;q('workspaceContent').innerHTML=h;if(q('workspaceEditBuilding'))q('workspaceEditBuilding').onclick=()=>openRecordModal('building');}
+q('closeBuildingWorkspace').onclick=()=>{q('buildingWorkspace').hidden=true;q('buildingCardGrid').hidden=false;renderPortfolio();};q('workspaceTabs').onclick=e=>{const btn=e.target.closest('[data-workspace-tab]');if(!btn)return;activeWorkspaceTab=btn.dataset.workspaceTab;document.querySelectorAll('[data-workspace-tab]').forEach(x=>x.classList.toggle('active',x===btn));renderBuildingWorkspace();};['buildingPageSearch','buildingConditionFilter','buildingStatusFilter'].forEach(id=>q(id).addEventListener(id==='buildingPageSearch'?'input':'change',renderPortfolio));q('addBuildingPageBtn').onclick=()=>openRecordModal('building');
 </script>
 
 </body>
