@@ -32,11 +32,11 @@
   <div class="shell">
     <header class="topbar">
       <div class="brand">
-        <img class="sitevue-brand-logo" src="./assets/sitevue360-logo.png" alt="SiteVue360 logo">
-        <img id="clientLogo" class="client-logo" src="" alt="Client logo" hidden>
-        <div>
-          <div class="brand-title">SITEVUE360</div>
-          <div class="brand-sub">Building Intelligence Platform</div>
+        <div class="sitevue-logo-plate">
+          <img class="sitevue-brand-logo" src="./assets/sitevue360-logo.png" alt="SiteVue360 logo">
+        </div>
+        <div id="clientLogoPlate" class="client-logo-plate" hidden>
+          <img id="clientLogo" class="client-logo" src="" alt="Client logo">
         </div>
       </div>
 
@@ -843,16 +843,20 @@ function initials(name="SiteVue") { return name.split(/\s+/).map(x=>x[0]).join("
 function applyOrganisationTheme(org){
   currentOrganisation=org;
   const root=document.documentElement;
-  root.style.setProperty("--client-accent",org?.primary_colour||"#0079C1");
+  // Keep the core SiteVue360 interface visually consistent for every client.
+  root.style.setProperty("--client-accent","#0079C1");
   document.body.dataset.client=org?.slug||"general-demo";
   const logo=q("clientLogo");
-  if(logo){
-    if(org?.logo_url){
-      logo.src=org.logo_url;
-      logo.hidden=false;
+  const logoPlate=q("clientLogoPlate");
+  if(logo && logoPlate){
+    const localClientLogo = org?.slug === "starbucks" ? "./assets/starbucks-wordmark.png" : null;
+    const logoSource = localClientLogo || org?.logo_url || null;
+    if(logoSource){
+      logo.src=logoSource;
+      logoPlate.hidden=false;
     } else {
       logo.removeAttribute("src");
-      logo.hidden=true;
+      logoPlate.hidden=true;
     }
   }
   document.title=`SiteVue360 — ${org?.name||"Building Intelligence Platform"}`;
