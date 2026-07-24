@@ -239,3 +239,74 @@ tr:hover td { background:rgba(0,121,193,.045); }
   .brand .sitevue-brand-logo { width: 120px; max-width: 32vw; }
   .brand .client-logo { max-width: 95px; height: 38px; }
 }
+
+/* Sprint 1A visual consistency update */
+.brand {
+  min-width: 255px;
+  gap: 10px;
+}
+.sitevue-logo-plate,
+.client-logo-plate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  background: rgba(255,255,255,.96);
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(0,0,0,.22);
+}
+.sitevue-logo-plate {
+  width: 205px;
+  height: 58px;
+  padding: 6px 10px;
+}
+.client-logo-plate {
+  min-width: 58px;
+  max-width: 155px;
+  height: 48px;
+  padding: 5px 9px;
+}
+.client-logo-plate[hidden] { display: none !important; }
+.brand .sitevue-brand-logo {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: contain;
+  object-position: center;
+  filter: none;
+}
+.brand .client-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 135px;
+  object-fit: contain;
+  object-position: center;
+  margin: 0;
+  filter: none;
+}
+/* The application chrome remains SiteVue360 blue for every organisation. */
+.topbar,
+body[data-client="starbucks"] .topbar {
+  background: linear-gradient(90deg, rgba(0,0,0,.95), rgba(0,59,99,.72), rgba(0,121,193,.35));
+}
+.primary-btn,
+body[data-client="starbucks"] .primary-btn,
+.kpi-accent,
+body[data-client="starbucks"] .kpi-accent {
+  background: linear-gradient(135deg, #0079C1, #00598f);
+}
+.profile-chip > span:first-child,
+.profile-avatar {
+  background: #0079C1;
+}
+@media (max-width: 1100px) {
+  .sitevue-logo-plate { width: 170px; }
+  .client-logo-plate { max-width: 115px; }
+  .brand { min-width: 220px; }
+}
+@media (max-width: 760px) {
+  .sitevue-logo-plate { width: 150px; height: 52px; }
+  .client-logo-plate { max-width: 95px; height: 42px; }
+}
