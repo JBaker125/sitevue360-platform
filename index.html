@@ -822,20 +822,31 @@ async function importDataset(type,file){
   verifyUniqueIds(type,rows);
   const notes=resolveBuildingLinks(type,rows);
   verifyAssetLinks(type,rows);
-
   rows.forEach(row=>delete row.__row);
 
   if(type==="buildings"){
-    allBuildings=rows;
-    // Existing linked records are retained only when they still refer to imported buildings.
-    const validIds=new Set(allBuildings.map(b=>b.buildingId));
-    Object.keys(DATA_STORE).forEach(key=>{
-      DATA_STORE[key]=DATA_STORE[key].filter(record=>validIds.has(record.buildingId));
+    const {data:{user}}=await sb.auth.getUser();
+    const payloads=rows.map(row=>{
+      const matchedOrg=accessibleOrganisations.find(org=>norm(org.name)===norm(row.clientName)||norm(org.slug)===norm(row.clientName));
+      const orgId=matchedOrg?.id||currentOrganisation.id;
+      return {
+        organisation_id:orgId, created_by:user.id, building_code:row.buildingId, building_name:row.buildingName,
+        address:row.address||null, building_type:row.buildingType||null, roof_type:row.roofType||null, roof_age:Number(row.roofAge||0),
+        last_survey_date:row.surveyDate||null, rag_rating:row.ragRating||"Green", works_required:["yes","true","1"].includes(norm(row.worksRequired)),
+        estimated_costs:Number(row.estimatedCosts||0), serviceable_life:Number(row.serviceableLife||0), thermal_rating:row.thermalAssessment||null,
+        energy_rating:row.energyAssessment||null, health_score:Number(row.portfolioScore||0), future_costs:Number(row.futureCosts||0),
+        status:row.status||"Active", gross_floor_area:Number(row.grossFloorArea||0), roof_area:Number(row.roofArea||0),
+        construction_year:Number(row.constructionYear||0)||null, occupancy:row.occupancy||null, portfolio_name:row.portfolioName||null
+      };
     });
-  }else{
-    DATA_STORE[type]=rows;
+    const {error}=await sb.from("buildings").upsert(payloads,{onConflict:"organisation_id,building_code"});
+    if(error) throw error;
+    await loadOrganisationData(currentOrganisation.id);
+    setImportStatus(type,rows.length,file.name,[...notes,"Saved permanently to Supabase."]);
+    return;
   }
 
+  DATA_STORE[type]=rows;
   enrichBuildings();
   populateFilters();
   renderAll();
@@ -961,12 +972,10 @@ async function loadOrganisationData(orgId){
     sb.from("assets").select("*").eq("organisation_id",orgId).order("asset_name")
   ]);
   if(bErr||aErr){console.warn(bErr||aErr);return;}
-  if(buildings?.length){
-    const mapped=buildings.map(b=>({buildingId:b.building_code,buildingName:b.building_name,clientName:currentOrganisation.name,address:b.address||"",buildingType:b.building_type||"Commercial",roofType:b.roof_type||"Not recorded",roofAge:b.roof_age||0,surveyDate:b.last_survey_date||"",ragRating:b.rag_rating||"Green",worksRequired:b.works_required?"Yes":"No",estimatedCosts:Number(b.estimated_costs||0),serviceableLife:b.serviceable_life||0,thermalAssessment:b.thermal_rating||"Not assessed",energyAssessment:b.energy_rating||"Not assessed",portfolioScore:b.health_score||0,futureCosts:Number(b.future_costs||0),status:b.status||"Active",dataReadiness:"Live database",grossFloorArea:Number(b.gross_floor_area||0),roofArea:Number(b.roof_area||0),constructionYear:b.construction_year||0,occupancy:b.occupancy||"Operational",surveys:0,defects:0,documents:0,warranties:0,_dbId:b.id}));
-    allBuildings=mapped; filteredBuildings=structuredClone(mapped); lastPortfolioFiltered=structuredClone(mapped); selectedBuildingId=mapped[0]?.buildingId||null;
-    DATA_STORE.buildings=structuredClone(mapped);
-  }
-  if(assets?.length){DATA_STORE.assets=assets.map(a=>({assetId:a.asset_code,buildingId:buildings.find(b=>b.id===a.building_id)?.building_code||"",system:a.system||a.asset_category||"General",assetName:a.asset_name,condition:a.condition||"Unknown",risk:a.risk_rating||"Green",health:Number(a.health_score||0),remainingLife:Number(a.remaining_life||0),replacementCost:Number(a.replacement_cost||0),lastInspected:a.last_inspected||"",_dbId:a.id}));}
+  const mapped=(buildings||[]).map(b=>({buildingId:b.building_code,buildingName:b.building_name,clientName:currentOrganisation.name,address:b.address||"",buildingType:b.building_type||"Commercial",roofType:b.roof_type||"Not recorded",roofAge:b.roof_age||0,surveyDate:b.last_survey_date||"",ragRating:b.rag_rating||"Green",worksRequired:b.works_required?"Yes":"No",estimatedCosts:Number(b.estimated_costs||0),serviceableLife:b.serviceable_life||0,thermalAssessment:b.thermal_rating||"Not assessed",energyAssessment:b.energy_rating||"Not assessed",portfolioScore:b.health_score||0,futureCosts:Number(b.future_costs||0),status:b.status||"Active",dataReadiness:"Live database",grossFloorArea:Number(b.gross_floor_area||0),roofArea:Number(b.roof_area||0),constructionYear:b.construction_year||0,occupancy:b.occupancy||"Operational",surveyDueDate:b.survey_due_date||"",digitalTwinUrl:b.digital_twin_url||"",imageUrl:b.image_url||"",portfolioName:b.portfolio_name||"",surveys:0,defects:0,documents:0,warranties:0,_dbId:b.id}));
+  allBuildings=mapped; filteredBuildings=structuredClone(mapped); lastPortfolioFiltered=structuredClone(mapped); selectedBuildingId=mapped[0]?.buildingId||null;
+  DATA_STORE.buildings=structuredClone(mapped);
+  DATA_STORE.assets=(assets||[]).map(a=>({assetId:a.asset_code,buildingId:(buildings||[]).find(b=>b.id===a.building_id)?.building_code||"",system:a.system||a.asset_category||"General",assetName:a.asset_name,condition:a.condition||"Unknown",risk:a.risk_rating||"Green",health:Number(a.health_score||0),remainingLife:Number(a.remaining_life||0),replacementCost:Number(a.replacement_cost||0),lastInspected:a.last_inspected||"",_dbId:a.id}));
   populateFilters(); renderAll();
 }
 async function loadNotifications(orgId){
@@ -999,12 +1008,38 @@ function openClientModal(mode="edit"){
   q("clientFormMessage").textContent="";
 }
 q("clientForm").addEventListener("submit",async e=>{
-  e.preventDefault();const form=new FormData(e.currentTarget);const payload={name:form.get("name").trim(),slug:form.get("slug").trim().toLowerCase().replace(/[^a-z0-9-]+/g,"-"),primary_colour:form.get("primary_colour"),logo_url:form.get("logo_url")||null,secondary_logo_url:form.get("secondary_logo_url")||null};
-  let result;
-  if(e.currentTarget.dataset.mode==="new") result=await sb.from("organisations").insert(payload).select().single();
-  else result=await sb.from("organisations").update(payload).eq("id",currentOrganisation.id).select().single();
-  if(result.error){q("clientFormMessage").textContent=result.error.message;q("clientFormMessage").className="auth-message error";return;}
-  Object.assign(currentOrganisation,result.data);applyOrganisationTheme(currentOrganisation);q("clientModal").hidden=true;
+  e.preventDefault();
+  const form=new FormData(e.currentTarget);
+  const payload={
+    name:String(form.get("name")||"").trim(),
+    slug:String(form.get("slug")||"").trim().toLowerCase().replace(/[^a-z0-9-]+/g,"-"),
+    primary_colour:form.get("primary_colour"),
+    logo_url:form.get("logo_url")||null,
+    secondary_logo_url:form.get("secondary_logo_url")||null
+  };
+  q("clientFormMessage").textContent="Saving client settings…";
+  q("clientFormMessage").className="auth-message";
+  let error=null, savedOrg=null;
+  if(e.currentTarget.dataset.mode==="new"){
+    const created=await sb.from("organisations").insert(payload).select("id,name,slug,primary_colour,secondary_colour,logo_url,secondary_logo_url").limit(1);
+    error=created.error; savedOrg=created.data?.[0]||null;
+  }else{
+    const updated=await sb.from("organisations").update(payload).eq("id",currentOrganisation.id);
+    error=updated.error;
+    if(!error) savedOrg={...currentOrganisation,...payload};
+  }
+  if(error){q("clientFormMessage").textContent=error.message;q("clientFormMessage").className="auth-message error";return;}
+  if(savedOrg){
+    const existingIndex=accessibleOrganisations.findIndex(o=>o.id===savedOrg.id);
+    if(existingIndex>=0) accessibleOrganisations[existingIndex]={...accessibleOrganisations[existingIndex],...savedOrg};
+    if(currentOrganisation?.id===savedOrg.id || e.currentTarget.dataset.mode!=="new"){
+      currentOrganisation={...currentOrganisation,...savedOrg};
+      applyOrganisationTheme(currentOrganisation);
+    }
+  }
+  q("clientFormMessage").textContent="Client settings saved.";
+  q("clientFormMessage").className="auth-message success";
+  setTimeout(()=>q("clientModal").hidden=true,350);
 });
 
 q("loginForm").addEventListener("submit",async e=>{e.preventDefault();setAuthMessage("Signing in…");const {data,error}=await sb.auth.signInWithPassword({email:q("loginEmail").value.trim(),password:q("loginPassword").value});if(error)return setAuthMessage(error.message,"error");try{await loadPlatform(data.session)}catch(err){setAuthMessage(err.message,"error");}});
@@ -1017,17 +1052,42 @@ q("quickAddBtn").onclick=()=>q("quickAddMenu").hidden=!q("quickAddMenu").hidden;
 if(q("openNewClient"))q("openNewClient").onclick=()=>{q("quickAddMenu").hidden=true;openClientModal("new");};
 q("openImportExisting").onclick=()=>{q("quickAddMenu").hidden=true;q("dataHub").hidden=false;q("dataHub").scrollIntoView({behavior:"smooth"});};
 const formFields={
- building:[['building_name','Building name','text',true],['building_code','Building ID / code','text',true],['address','Address','text',false],['building_type','Building type','text',false],['status','Status','text',false],['occupancy','Occupancy','text',false],['construction_year','Construction year','number',false],['gross_floor_area','Gross floor area (m²)','number',false],['floor_count','Number of floors','number',false],['health_score','Health score (%)','number',false],['condition','Condition','text',false],['survey_due_date','Survey due date','date',false],['digital_twin_url','Digital twin URL','url',false],['image_url','Building image URL','url',false]],
+ building:[['organisation_id','Client / organisation','organisation-select',true],['portfolio_name','Portfolio','text',false],['building_name','Building name','text',true],['building_code','Building ID / code','text',true],['address','Address','text',false],['building_type','Building type','text',false],['status','Status','text',false],['occupancy','Occupancy','text',false],['construction_year','Construction year','number',false],['gross_floor_area','Gross floor area (m²)','number',false],['floor_count','Number of floors','number',false],['health_score','Health score (%)','number',false],['condition','Condition','text',false],['survey_due_date','Survey due date','date',false],['digital_twin_url','Digital twin URL','url',false],['image_url','Building image URL','url',false]],
  asset:[['building_id','Building','select',true],['asset_name','Asset name','text',true],['asset_code','Asset ID / code','text',true],['asset_category','Asset category','text',false],['system','System','text',false],['condition','Condition','text',false],['remaining_life','Remaining life (years)','number',false],['replacement_cost','Replacement cost (£)','number',false]]
 };
 function openRecordModal(type){
  q("quickAddMenu").hidden=true;q("recordModal").hidden=false;q("recordModalTitle").textContent=type==='building'?'Add Building':'Add Asset';
  q("recordForm").dataset.type=type;
- q("recordForm").innerHTML=formFields[type].map(([name,label,input,required])=>{if(input==='select')return `<label>${label}<select name="${name}" ${required?'required':''}>${allBuildings.map(b=>`<option value="${b._dbId||''}">${b.buildingName}</option>`).join('')}</select></label>`;return `<label>${label}<input name="${name}" type="${input}" ${required?'required':''}></label>`}).join('')+'<div class="form-actions"><button type="button" class="secondary-btn" id="cancelRecord">Cancel</button><button class="primary-btn" type="submit">Save record</button></div><div id="recordMessage" class="auth-message"></div>';
+ q("recordForm").innerHTML=formFields[type].map(([name,label,input,required])=>{
+   if(input==='select') return `<label>${label}<select name="${name}" ${required?'required':''}>${allBuildings.map(b=>`<option value="${b._dbId||''}">${b.buildingName}</option>`).join('')}</select></label>`;
+   if(input==='organisation-select'){
+     const options=accessibleOrganisations.map(org=>`<option value="${org.id}" ${org.id===currentOrganisation?.id?'selected':''}>${org.name}</option>`).join('');
+     return `<label>${label}<select name="${name}" ${required?'required':''}>${options}</select></label>`;
+   }
+   return `<label>${label}<input name="${name}" type="${input}" ${required?'required':''}></label>`;
+ }).join('')+'<div class="form-actions"><button type="button" class="secondary-btn" id="cancelRecord">Cancel</button><button class="primary-btn" type="submit">Save record</button></div><div id="recordMessage" class="auth-message"></div>';
  q("cancelRecord").onclick=()=>q("recordModal").hidden=true;
 }
 document.querySelectorAll("[data-open-modal]").forEach(b=>b.onclick=()=>openRecordModal(b.dataset.openModal));q("closeRecordModal").onclick=()=>q("recordModal").hidden=true;
-q("recordForm").addEventListener("submit",async e=>{e.preventDefault();const type=e.currentTarget.dataset.type;const payload=Object.fromEntries(new FormData(e.currentTarget));Object.keys(payload).forEach(k=>{if(payload[k]==='')delete payload[k];else if(['construction_year','gross_floor_area','roof_area','floor_count','health_score','remaining_life','replacement_cost'].includes(k))payload[k]=Number(payload[k]);});payload.organisation_id=currentOrganisation.id;payload.created_by=(await sb.auth.getUser()).data.user.id;const table=type==='building'?'buildings':'assets';const {error}=await sb.from(table).insert(payload);if(error){q("recordMessage").textContent=error.message;q("recordMessage").className='auth-message error';return;}q("recordModal").hidden=true;await loadOrganisationData(currentOrganisation.id);});
+q("recordForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const type=e.currentTarget.dataset.type;
+  const payload=Object.fromEntries(new FormData(e.currentTarget));
+  Object.keys(payload).forEach(k=>{if(payload[k]==='')delete payload[k];else if(['construction_year','gross_floor_area','roof_area','floor_count','health_score','remaining_life','replacement_cost'].includes(k))payload[k]=Number(payload[k]);});
+  const selectedOrganisationId=type==='building'?(payload.organisation_id||currentOrganisation.id):currentOrganisation.id;
+  payload.organisation_id=selectedOrganisationId;
+  payload.created_by=(await sb.auth.getUser()).data.user.id;
+  const table=type==='building'?'buildings':'assets';
+  q("recordMessage").textContent="Saving…";
+  const {error}=await sb.from(table).insert(payload);
+  if(error){q("recordMessage").textContent=error.message;q("recordMessage").className='auth-message error';return;}
+  q("recordModal").hidden=true;
+  if(type==='building' && selectedOrganisationId!==currentOrganisation.id && accessibleOrganisations.some(o=>o.id===selectedOrganisationId)){
+    await switchOrganisation(selectedOrganisationId);
+  }else{
+    await loadOrganisationData(currentOrganisation.id);
+  }
+});
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session){try{await loadPlatform(session)}catch(err){setAuthMessage(err.message,"error");}}})();
 </script>
 
