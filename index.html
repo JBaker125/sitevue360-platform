@@ -313,7 +313,7 @@
 <div id="surveyDefectModal" class="modal-backdrop" hidden><div class="record-modal survey-modal wide"><div class="side-panel-head"><div><div class="eyebrow">Defect intelligence</div><h2 id="surveyDefectModalTitle">Add Defect</h2></div><button id="closeSurveyDefectModal">×</button></div><form id="surveyDefectForm" class="record-form survey-form-grid"></form></div></div>
 
     <footer class="footer">
-      <span>SiteVue360 v2.2 · Defect Intelligence</span>
+      <span>SiteVue360 v2.2.1 · Cross-Platform Intelligence Hotfix</span>
       <span id="updatedAt">Last updated: —</span>
     </footer>
   </div>
@@ -419,7 +419,7 @@ function riskClass(rag) {
 }
 
 function recommendationFor(b) {
-  const r=norm(b.ragRating), life=Number(b.serviceableLife), future=Number(b.futureCosts);
+  const r=norm(b.ragRating), life=Number(b.serviceableLife||0), future=Number(b.futureCosts||0);
   if (r==="red" && (poorOrFail(b.thermalAssessment) || poorOrFail(b.energyAssessment))) return "Urgent technical review and immediate intervention are recommended.";
   if (r==="red" || life<3) return "Immediate intervention and CAPEX planning are recommended.";
   if (r==="amber" || life<5) return "Planned intervention and CAPEX planning are advised.";
@@ -816,9 +816,12 @@ function latestSurveyDate(buildingId){
 }
 
 function calculatedRag(building){
-  const ds=DATA_STORE.defects.filter(d=>d.buildingId===building.buildingId);
-  if(ds.some(d=>["urgent","critical","high"].includes(norm(d.priority))))return "Red";
-  if(ds.length||Number(building.serviceableLife)<7)return "Amber";
+  const ds=(DATA_STORE.defects||[]).filter(d=>d.buildingId===building.buildingId && !["resolved","closed"].includes(norm(d.status)));
+  if(ds.some(d=>["critical","high"].includes(norm(d.riskRating||d.risk_rating||d.severity)) || ["urgent","immediate"].includes(norm(d.priority)))) return "Red";
+  if(ds.some(d=>["medium"].includes(norm(d.riskRating||d.risk_rating||d.severity))) || ds.length) return "Amber";
+  const life=Number(building.serviceableLife||0);
+  if(life>0 && life<3) return "Red";
+  if(life>=3 && life<7) return "Amber";
   return building.ragRating||"Green";
 }
 
@@ -1107,8 +1110,29 @@ async function loadOrganisationData(orgId){
   DATA_STORE.surveyEvents=surveyEvents||[];
   DATA_STORE.surveyAreas=surveyAreas||[];
   DATA_STORE.defectTypes=defectTypes||[];
-  DATA_STORE.defects=surveyDefects||[];
-  mapped.forEach(b=>{b.surveys=DATA_STORE.surveys.filter(x=>x.buildingId===b.buildingId).length;});
+  DATA_STORE.defects=(surveyDefects||[]).map(d=>{
+    const survey=(surveys||[]).find(s=>s.id===d.survey_id);
+    const building=(buildings||[]).find(b=>b.id===survey?.building_id);
+    const area=(surveyAreas||[]).find(a=>a.id===d.survey_area_id);
+    const type=(defectTypes||[]).find(t=>t.id===d.defect_type_id);
+    return {...d,
+      defectId:d.id,
+      defectReference:d.defect_reference,
+      surveyId:d.survey_id,
+      surveyAreaId:d.survey_area_id,
+      buildingId:building?.building_code||'',
+      buildingName:building?.building_name||'',
+      areaName:area?.area_name||area?.name||'Survey area',
+      defectType:type?.name||d.custom_defect_type||'Defect',
+      riskRating:d.risk_rating||d.severity||'Medium',
+      estimatedCost:Number(d.estimated_cost||0)
+    };
+  });
+  enrichBuildings();
+  allBuildings.forEach(b=>{
+    const latest=latestSurveyDate(b.buildingId);
+    if(latest) b.surveyDate=latest;
+  });
   populateFilters(); renderAll();
 }
 async function loadNotifications(orgId){
@@ -1243,7 +1267,25 @@ renderPortfolio=function(){
 };
 function openBuildingWorkspace(id){selectedBuildingId=id;activeWorkspaceTab='overview';q('buildingCardGrid').hidden=true;q('buildingWorkspace').hidden=false;renderBuildingWorkspace();window.scrollTo({top:0,behavior:'smooth'});}
 function renderBuildingWorkspace(){const b=allBuildings.find(x=>x.buildingId===selectedBuildingId);if(!b)return;q('workspaceCode').textContent=b.buildingId;q('workspaceName').textContent=b.buildingName;q('workspaceAddress').textContent=b.address||'Address not recorded';q('workspaceHealth').textContent=`${Number(b.portfolioScore||0)}%`;q('workspaceCondition').textContent=buildingCondition(b);q('workspaceMeta').innerHTML=`<span><small>Client</small><b>${b.clientName||currentOrganisation?.name||'—'}</b></span><span><small>Type</small><b>${b.buildingType||'—'}</b></span><span><small>Constructed</small><b>${b.constructionYear||'—'}</b></span><span><small>Floor area</small><b>${Number(b.grossFloorArea||0).toLocaleString()} m²</b></span><span><small>Occupancy</small><b>${b.occupancy||'—'}</b></span><span><small>Digital twin</small><b>${b.digitalTwinUrl?'Available':'Not linked'}</b></span>`;renderWorkspaceContent(b);}
-function renderWorkspaceContent(b){const assets=(DATA_STORE.assets||[]).filter(a=>a.buildingId===b.buildingId), defects=(DATA_STORE.defects||[]).filter(x=>x.buildingId===b.buildingId), works=(DATA_STORE.works||[]).filter(x=>x.buildingId===b.buildingId);let h='';if(activeWorkspaceTab==='overview')h=`<div class="workspace-kpis"><article class="card"><small>Building health</small><strong>${b.portfolioScore||0}%</strong><span>${buildingCondition(b)}</span></article><article class="card"><small>Registered assets</small><strong>${assets.length}</strong><span>Maintainable items</span></article><article class="card"><small>Open defects</small><strong>${defects.length||b.defects||0}</strong><span>Current issues</span></article><article class="card"><small>Future liability</small><strong>${compactMoney(Number(b.futureCosts||0))}</strong><span>Planned exposure</span></article></div><div class="workspace-grid"><article class="card"><div class="panel-title"><h2>Building profile</h2></div><div class="detail-list"><div><span>Status</span><b>${b.status||'Active'}</b></div><div><span>Building type</span><b>${b.buildingType||'—'}</b></div><div><span>Construction year</span><b>${b.constructionYear||'—'}</b></div><div><span>Gross internal area</span><b>${Number(b.grossFloorArea||0).toLocaleString()} m²</b></div><div><span>Latest survey</span><b>${b.surveyDate||'Not recorded'}</b></div><div><span>Survey due</span><b>${b.surveyDueDate||'Not scheduled'}</b></div></div></article><article class="card"><div class="panel-title"><h2>Intelligence summary</h2><span class="condition-pill ${conditionClass(buildingCondition(b))}">${buildingCondition(b)}</span></div><p class="workspace-narrative">${recommendationFor(b)}</p><div class="reco"><b>Next priority</b><br>${Number(b.serviceableLife||0)<3?'Prepare immediate intervention and funding approval.':'Maintain planned inspection and lifecycle programme.'}</div></article></div>`;else if(activeWorkspaceTab==='assets')h=`<article class="card"><div class="panel-title"><h2>Assets</h2><span class="badge">${assets.length}</span></div>${assets.length?assets.map(a=>`<div class="workspace-row"><b>${a.assetName||a.name}</b><span>${a.system||'General'}</span><span>${a.condition||'Unknown'}</span></div>`).join(''):'<div class="empty">No assets have been assigned to this building yet.</div>'}</article>`;else if(activeWorkspaceTab==='settings')h=`<article class="card"><div class="panel-title"><h2>Building settings</h2></div><p class="subtle">Edit and deletion controls will use the organisation permissions already established in Sprint 1A.</p><button class="primary-btn" id="workspaceEditBuilding">Edit Building</button></article>`;else h=`<article class="card"><div class="panel-title"><h2>${activeWorkspaceTab[0].toUpperCase()+activeWorkspaceTab.slice(1)}</h2></div><div class="empty">This workspace is ready for the ${activeWorkspaceTab} module in the next release.</div></article>`;q('workspaceContent').innerHTML=h;if(q('workspaceEditBuilding'))q('workspaceEditBuilding').onclick=()=>openRecordModal('building');}
+function renderWorkspaceContent(b){
+ const assets=(DATA_STORE.assets||[]).filter(a=>a.buildingId===b.buildingId);
+ const surveys=(DATA_STORE.surveys||[]).filter(x=>x.buildingId===b.buildingId).sort((a,z)=>String(z.surveyDate||z.updatedAt||'').localeCompare(String(a.surveyDate||a.updatedAt||'')));
+ const defects=(DATA_STORE.defects||[]).filter(x=>x.buildingId===b.buildingId);
+ const openDefects=defects.filter(x=>!["resolved","closed"].includes(norm(x.status)));
+ const works=(DATA_STORE.works||[]).filter(x=>x.buildingId===b.buildingId);
+ let h='';
+ if(activeWorkspaceTab==='overview') h=`<div class="workspace-kpis"><article class="card"><small>Building health</small><strong>${b.portfolioScore||0}%</strong><span>${buildingCondition(b)}</span></article><article class="card"><small>Registered assets</small><strong>${assets.length}</strong><span>Maintainable items</span></article><article class="card"><small>Open defects</small><strong>${openDefects.length}</strong><span>Current survey findings</span></article><article class="card"><small>Surveys</small><strong>${surveys.length}</strong><span>${surveys[0]?.surveyDate?`Latest ${displayDate(surveys[0].surveyDate)}`:'No completed survey date'}</span></article></div><div class="workspace-grid"><article class="card"><div class="panel-title"><h2>Building profile</h2></div><div class="detail-list"><div><span>Status</span><b>${b.status||'Active'}</b></div><div><span>Building type</span><b>${b.buildingType||'—'}</b></div><div><span>Construction year</span><b>${b.constructionYear||'—'}</b></div><div><span>Gross internal area</span><b>${Number(b.grossFloorArea||0).toLocaleString()} m²</b></div><div><span>Latest survey</span><b>${surveys[0]?.surveyDate?displayDate(surveys[0].surveyDate):'Not recorded'}</b></div><div><span>RAG rating</span><b><span class="risk-pill ${riskClass(b.ragRating)}">${b.ragRating}</span></b></div></div></article><article class="card"><div class="panel-title"><h2>Intelligence summary</h2><span class="condition-pill ${conditionClass(buildingCondition(b))}">${buildingCondition(b)}</span></div><p class="workspace-narrative">${recommendationFor(b)}</p><div class="reco"><b>Connected survey intelligence</b><br>${surveys.length} survey${surveys.length===1?' is':'s are'} linked to this building with ${openDefects.length} open defect${openDefects.length===1?'':'s'}.</div></article></div>`;
+ else if(activeWorkspaceTab==='assets') h=`<article class="card"><div class="panel-title"><h2>Assets</h2><span class="badge">${assets.length}</span></div>${assets.length?assets.map(a=>`<div class="workspace-row"><b>${esc(a.assetName||a.name)}</b><span>${esc(a.system||'General')}</span><span>${esc(a.condition||'Unknown')}</span></div>`).join(''):'<div class="empty">No assets have been assigned to this building yet.</div>'}</article>`;
+ else if(activeWorkspaceTab==='surveys') h=`<article class="card"><div class="panel-title"><h2>Surveys</h2><span class="badge">${surveys.length}</span></div>${surveys.length?surveys.map(s=>{const project=surveyProject(s);const count=defects.filter(d=>d.surveyId===s.surveyId||d.survey_id===s.surveyId).length;return `<button class="workspace-row workspace-link-row" data-open-building-survey="${s.surveyId}"><b>${esc(s.surveyReference||'Survey')}</b><span>${esc(s.surveyTypeName||'Survey')}</span><span>${displayDate(s.surveyDate)}</span><span>${esc(s.status||'Draft')}</span><span>${count} defect${count===1?'':'s'}</span><small>${esc(project?.txNumber||project?.tx_number||'No TX')}</small></button>`}).join(''):'<div class="empty">No surveys are linked to this building yet.</div>'}</article>`;
+ else if(activeWorkspaceTab==='defects') h=`<article class="card"><div class="panel-title"><h2>Defects</h2><span class="badge">${defects.length}</span></div>${defects.length?defects.map(d=>`<div class="workspace-row"><b>${esc(d.defectReference||d.defect_reference||'Defect')}</b><span>${esc(d.defectType||'Defect')}</span><span>${esc(d.areaName||'Survey area')}</span><span class="risk-pill ${riskClass(d.riskRating==='Critical'?'Red':d.riskRating==='High'?'Red':d.riskRating==='Medium'?'Amber':'Green')}">${esc(d.riskRating||'Medium')}</span><span>${esc(d.status||'Open')}</span></div>`).join(''):'<div class="empty">No structured defects are linked to this building.</div>'}</article>`;
+ else if(activeWorkspaceTab==='works') h=`<article class="card"><div class="panel-title"><h2>Works</h2><span class="badge">${works.length}</span></div>${works.length?works.map(w=>`<div class="workspace-row"><b>${esc(w.title||w.workType||'Works item')}</b><span>${esc(w.status||'Planned')}</span><span>${currency(Number(w.estimatedCost||0))}</span></div>`).join(''):'<div class="empty">No works records are linked to this building yet.</div>'}</article>`;
+ else if(activeWorkspaceTab==='timeline') {const events=(DATA_STORE.surveyEvents||[]).filter(e=>surveys.some(s=>s.surveyId===e.survey_id)).slice(0,50);h=`<article class="card"><div class="panel-title"><h2>Timeline</h2><span class="badge">${events.length}</span></div>${events.length?events.map(e=>`<div class="workspace-row"><b>${esc(e.event_type||'Survey activity')}</b><span>${esc(e.description||'')}</span><span>${new Date(e.created_at).toLocaleString('en-GB')}</span></div>`).join(''):'<div class="empty">No survey activity has been recorded for this building.</div>'}</article>`;}
+ else if(activeWorkspaceTab==='settings') h=`<article class="card"><div class="panel-title"><h2>Building settings</h2></div><p class="subtle">Edit and deletion controls use the organisation permissions already established in Sprint 1A.</p><button class="primary-btn" id="workspaceEditBuilding">Edit Building</button></article>`;
+ else h=`<article class="card"><div class="panel-title"><h2>${activeWorkspaceTab[0].toUpperCase()+activeWorkspaceTab.slice(1)}</h2></div><div class="empty">This workspace is ready for connected ${activeWorkspaceTab} data in a future release.</div></article>`;
+ q('workspaceContent').innerHTML=h;
+ if(q('workspaceEditBuilding'))q('workspaceEditBuilding').onclick=()=>openRecordModal('building');
+ document.querySelectorAll('[data-open-building-survey]').forEach(btn=>btn.onclick=()=>{selectedSurveyId=btn.dataset.openBuildingSurvey;showPage('survey-centre');openSurveyWorkspace(selectedSurveyId);});
+}
 q('closeBuildingWorkspace').onclick=()=>{q('buildingWorkspace').hidden=true;q('buildingCardGrid').hidden=false;renderPortfolio();};q('workspaceTabs').onclick=e=>{const btn=e.target.closest('[data-workspace-tab]');if(!btn)return;activeWorkspaceTab=btn.dataset.workspaceTab;document.querySelectorAll('[data-workspace-tab]').forEach(x=>x.classList.toggle('active',x===btn));renderBuildingWorkspace();};['buildingPageSearch','buildingConditionFilter','buildingStatusFilter'].forEach(id=>q(id).addEventListener(id==='buildingPageSearch'?'input':'change',renderPortfolio));q('addBuildingPageBtn').onclick=()=>openRecordModal('building');if(q('addAssetPageBtn'))q('addAssetPageBtn').onclick=()=>openRecordModal('asset');
 </script>
 
