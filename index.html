@@ -1307,7 +1307,54 @@ q('txProjectForm').addEventListener('submit',async e=>{
  await loadOrganisationData(currentOrganisation.id);
  renderSurveyCentre();
 });
-q('surveyForm').addEventListener('submit',async e=>{e.preventDefault();const payload=Object.fromEntries(new FormData(e.currentTarget));Object.keys(payload).forEach(k=>payload[k]===''&&delete payload[k]);payload.organisation_id=currentOrganisation.id;payload.created_by=(await sb.auth.getUser()).data.user.id;payload.temperature=payload.temperature?Number(payload.temperature):null;q('surveyFormMessage').textContent='Saving…';const edit=e.currentTarget.dataset.editId;let data,error;if(edit)({data,error}=await sb.from('surveys').update(payload).eq('id',edit).select().single());else({data,error}=await sb.from('surveys').insert(payload).select().single());if(error){q('surveyFormMessage').textContent=error.message;q('surveyFormMessage').className='auth-message error';return;}await logSurveyEvent(data.id,edit?'survey_updated':'survey_created',edit?'Survey details updated.':'Survey created in SiteVue360.',null,data.status);q('surveyModal').hidden=true;await loadOrganisationData(currentOrganisation.id);openSurveyWorkspace(data.id);});
+q('surveyForm').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const form=e.currentTarget,msg=q('surveyFormMessage'),saveBtn=form.querySelector('button[type="submit"]');
+ const edit=form.dataset.editId;
+ const raw=Object.fromEntries(new FormData(form));
+ const project=DATA_STORE.projects.find(p=>p.id===raw.project_id);
+ const surveyType=DATA_STORE.surveyTypes.find(t=>t.id===raw.survey_type_id);
+ const {data:userData,error:userError}=await sb.auth.getUser();
+ if(userError||!userData?.user){msg.textContent='Your session could not be confirmed. Please sign in again.';msg.className='auth-message error';return;}
+ if(!currentOrganisation?.id){msg.textContent='No active client organisation is selected.';msg.className='auth-message error';return;}
+ if(!project){msg.textContent='Select a valid TX project before saving the survey.';msg.className='auth-message error';return;}
+ if(!surveyType){msg.textContent='Select a valid survey type before saving.';msg.className='auth-message error';return;}
+ if(!(raw.title||'').trim()){msg.textContent='Enter a survey title.';msg.className='auth-message error';return;}
+ // The TX project is the source of truth for the linked building. This prevents
+ // a stale or mismatched building selection from causing a failed insert.
+ const payload={
+   organisation_id:currentOrganisation.id,
+   project_id:project.id,
+   building_id:project.building_id,
+   survey_type_id:surveyType.id,
+   title:(raw.title||'').trim(),
+   status:raw.status||'Draft'
+ };
+ const optionalText=['lead_surveyor_name','client_reference','weather','access_method','methodology','areas_inspected','areas_not_inspected','limitations','health_safety_notes','general_notes'];
+ optionalText.forEach(k=>{const v=(raw[k]||'').trim();if(v)payload[k]=v;});
+ if(raw.asset_id)payload.asset_id=raw.asset_id;
+ if(raw.survey_date)payload.survey_date=raw.survey_date;
+ if(raw.temperature!==''&&raw.temperature!=null){const n=Number(raw.temperature);if(Number.isFinite(n))payload.temperature=n;}
+ if(!edit)payload.created_by=userData.user.id;
+ msg.textContent=edit?'Updating survey…':'Saving survey…';msg.className='auth-message';if(saveBtn)saveBtn.disabled=true;
+ let data,error;
+ try{
+   if(edit)({data,error}=await sb.from('surveys').update(payload).eq('id',edit).select('*').single());
+   else({data,error}=await sb.from('surveys').insert(payload).select('*').single());
+ }catch(err){error=err;}
+ if(saveBtn)saveBtn.disabled=false;
+ if(error){
+   console.error('Survey save failed',error,payload);
+   const friendly=error.code==='23503'?'The selected TX project, building, asset or survey type is no longer available. Refresh the page and try again.':error.code==='42501'?'Your account does not have permission to create surveys for this client.':error.code==='23514'?'The selected workflow status is not valid.':(error.message||'The survey could not be saved.');
+   msg.textContent=friendly;msg.className='auth-message error';return;
+ }
+ if(!data?.id){msg.textContent='The database did not return the saved survey. Refresh the page and check the Survey Centre.';msg.className='auth-message error';return;}
+ // A timeline failure must not undo or hide a successfully saved survey.
+ try{await logSurveyEvent(data.id,edit?'survey_updated':'survey_created',edit?'Survey details updated.':'Survey created in SiteVue360.',null,data.status);}catch(eventError){console.warn('Survey saved but timeline event failed',eventError);}
+ q('surveyModal').hidden=true;
+ await loadOrganisationData(currentOrganisation.id);
+ openSurveyWorkspace(data.id);
+});
 function openSurveyWorkspace(id){selectedSurveyId=id;activeSurveyTab='overview';q('surveyCentreList').hidden=true;q('surveyWorkspace').hidden=false;document.querySelectorAll('[data-survey-tab]').forEach(x=>x.classList.toggle('active',x.dataset.surveyTab==='overview'));renderSurveyWorkspace();window.scrollTo({top:0,behavior:'smooth'});}
 function renderSurveyWorkspace(){const s=DATA_STORE.surveys.find(x=>x.id===selectedSurveyId);if(!s)return;const p=surveyProject(s),b=surveyBuilding(s),a=surveyAsset(s);q('surveyWorkspaceTx').textContent=`${p?.txNumber||'No TX'} · ${s.surveyReference}`;q('surveyWorkspaceTitle').textContent=s.title;q('surveyWorkspaceMeta').textContent=`${s.surveyTypeName} · ${b?.buildingName||'Building'}${a?' · '+a.assetName:''} · ${displayDate(s.surveyDate)}`;q('surveyWorkspaceStatus').innerHTML=SURVEY_STATUSES.map(x=>`<option ${x===s.status?'selected':''}>${x}</option>`).join('');renderSurveyWorkspaceContent(s,p,b,a);}
 function renderSurveyWorkspaceContent(s,p,b,a){let h='';if(activeSurveyTab==='overview')h=`<div class="workspace-kpis"><article class="card"><small>Survey reference</small><strong class="reference-value">${esc(s.surveyReference)}</strong><span>System-generated identity</span></article><article class="card"><small>TX number</small><strong class="reference-value">${esc(p?.txNumber||'—')}</strong><span>Everlast job identity</span></article><article class="card"><small>Workflow status</small><strong class="reference-value">${esc(s.status)}</strong><span>Current stage</span></article><article class="card"><small>Survey date</small><strong class="reference-value">${displayDate(s.surveyDate)}</strong><span>${esc(s.leadSurveyor||'Surveyor not assigned')}</span></article></div><div class="workspace-grid"><article class="card"><div class="panel-title"><h2>Survey identity</h2></div><div class="detail-list"><div><span>TX project</span><b>${esc(p?.projectName||'—')}</b></div><div><span>Building</span><b>${esc(b?.buildingName||'—')}</b></div><div><span>Asset</span><b>${esc(a?.assetName||'Building-level survey')}</b></div><div><span>Survey type</span><b>${esc(s.surveyTypeName)}</b></div><div><span>Client reference</span><b>${esc(s.clientReference||p?.client_reference||'—')}</b></div><div><span>Access method</span><b>${esc(s.accessMethod||'—')}</b></div></div></article><article class="card"><div class="panel-title"><h2>General notes</h2></div><p class="workspace-narrative">${esc(s.generalNotes||'No general survey notes have been recorded.')}</p></article></div>`;else if(activeSurveyTab==='inspection')h=`<div class="workspace-grid"><article class="card"><div class="panel-title"><h2>Inspection record</h2></div><div class="detail-list"><div><span>Weather</span><b>${esc(s.weather||'—')}</b></div><div><span>Temperature</span><b>${s.temperature!=null?esc(s.temperature)+'°C':'—'}</b></div><div><span>Access method</span><b>${esc(s.accessMethod||'—')}</b></div><div><span>Surveyor</span><b>${esc(s.leadSurveyor||'—')}</b></div></div><h3>Methodology</h3><p class="workspace-narrative">${esc(s.methodology||'Not recorded')}</p><h3>Areas inspected</h3><p class="workspace-narrative">${esc(s.areasInspected||'Not recorded')}</p></article><article class="card"><div class="panel-title"><h2>Restrictions & safety</h2></div><h3>Areas not inspected</h3><p class="workspace-narrative">${esc(s.areasNotInspected||'None recorded')}</p><h3>Limitations</h3><p class="workspace-narrative">${esc(s.limitations||'None recorded')}</p><h3>Health & safety observations</h3><p class="workspace-narrative">${esc(s.healthSafetyNotes||'None recorded')}</p></article></div>`;else if(activeSurveyTab==='timeline'){const events=(DATA_STORE.surveyEvents||[]).filter(e=>e.survey_id===s.id);h=`<article class="card"><div class="panel-title"><h2>Survey timeline</h2><span class="badge">${events.length} event${events.length===1?'':'s'}</span></div><div class="survey-timeline">${events.length?events.map(e=>`<div class="timeline-event"><i></i><div><b>${esc(e.description||e.event_type)}</b><p>${e.old_status&&e.new_status?`${esc(e.old_status)} → ${esc(e.new_status)}`:''}</p><small>${new Date(e.created_at).toLocaleString('en-GB')}</small></div></div>`).join(''):'<div class="empty">No timeline events recorded.</div>'}</div></article>`}else if(activeSurveyTab==='settings')h=`<article class="card"><div class="panel-title"><h2>Survey settings</h2></div><p class="subtle">The SiteVue360 reference is immutable. The TX number is managed through the parent project.</p><button class="primary-btn" id="settingsEditSurvey">Edit survey details</button></article>`;else h=`<article class="card"><div class="panel-title"><h2>${activeSurveyTab[0].toUpperCase()+activeSurveyTab.slice(1)}</h2></div><div class="empty">This module is prepared for Defect Intelligence and Report Intelligence in the next release.</div></article>`;q('surveyWorkspaceContent').innerHTML=h;if(q('settingsEditSurvey'))q('settingsEditSurvey').onclick=()=>openSurveyModal(s);}
