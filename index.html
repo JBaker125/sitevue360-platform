@@ -37,6 +37,9 @@
   content:"" !important; display:block !important; width:8px !important; height:8px !important;
   border-radius:50% !important; background:currentColor !important; box-shadow:0 0 8px currentColor !important;
 }
+
+/* v2.2.4 diagnostic marker: exact RGB fills, no transparency. */
+.risk-pill, .rag.green, .rag.amber, .rag.red { isolation:isolate !important; }
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -343,7 +346,7 @@
 <div id="surveyDefectModal" class="modal-backdrop" hidden><div class="record-modal survey-modal wide"><div class="side-panel-head"><div><div class="eyebrow">Defect intelligence</div><h2 id="surveyDefectModalTitle">Add Defect</h2></div><button id="closeSurveyDefectModal">×</button></div><form id="surveyDefectForm" class="record-form survey-form-grid"></form></div></div>
 
     <footer class="footer">
-      <span>SiteVue360 v2.2.1 · Cross-Platform Intelligence Hotfix</span>
+      <span>SiteVue360 v2.2.4 · Forced RAG Colour Fix</span>
       <span id="updatedAt">Last updated: —</span>
     </footer>
   </div>
@@ -447,6 +450,42 @@ function riskClass(rag) {
   const v=norm(rag);
   return v==="green" ? "risk-green" : v==="amber" ? "risk-amber" : "risk-red";
 }
+
+/* v2.2.4: force true RAG colours directly onto rendered elements.
+   This bypasses stale stylesheets, client-theme overrides and browser cache conflicts. */
+function forceRagColours(root=document) {
+  const palette = {
+    green:{color:'#62f0a5', background:'#103f2d', border:'#38d98a', glow:'rgba(56,217,138,.42)'},
+    amber:{color:'#ffd45e', background:'#4b3810', border:'#f2b927', glow:'rgba(242,185,39,.42)'},
+    red:{color:'#ff8795', background:'#4b1821', border:'#f35d72', glow:'rgba(243,93,114,.45)'}
+  };
+  root.querySelectorAll('.risk-pill, .rag.green, .rag.amber, .rag.red, .condition-pill.risk-green, .condition-pill.risk-amber, .condition-pill.risk-red').forEach(el => {
+    const cls = el.classList;
+    const label = norm(el.textContent);
+    const key = cls.contains('risk-green') || cls.contains('green') || label==='green' ? 'green'
+      : cls.contains('risk-amber') || cls.contains('amber') || label==='amber' ? 'amber'
+      : 'red';
+    const p = palette[key];
+    el.style.setProperty('display','inline-flex','important');
+    el.style.setProperty('align-items','center','important');
+    el.style.setProperty('gap','7px','important');
+    el.style.setProperty('padding','6px 10px','important');
+    el.style.setProperty('border-radius','999px','important');
+    el.style.setProperty('font-weight','900','important');
+    el.style.setProperty('line-height','1','important');
+    el.style.setProperty('color',p.color,'important');
+    el.style.setProperty('-webkit-text-fill-color',p.color,'important');
+    el.style.setProperty('background',p.background,'important');
+    el.style.setProperty('background-color',p.background,'important');
+    el.style.setProperty('border','1px solid '+p.border,'important');
+    el.style.setProperty('box-shadow','0 0 0 1px '+p.glow+', 0 0 14px '+p.glow,'important');
+    el.style.setProperty('opacity','1','important');
+  });
+}
+
+const ragObserver = new MutationObserver(() => forceRagColours(document));
+ragObserver.observe(document.documentElement,{subtree:true,childList:true});
+window.addEventListener('DOMContentLoaded',()=>forceRagColours(document));
 
 function recommendationFor(b) {
   const r=norm(b.ragRating), life=Number(b.serviceableLife||0), future=Number(b.futureCosts||0);
