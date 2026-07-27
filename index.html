@@ -9,6 +9,36 @@
 <meta name="theme-color" content="#0079C1">
 <link rel="stylesheet" href="./css/sitevue360.css">
 
+
+<style id="sitevue360-rag-critical-fix">
+/* v2.2.3 embedded RAG styles: deliberately inline so deployment paths and CSS caching cannot suppress them. */
+.risk-pill.risk-green, .rag.green, .condition-pill.risk-green {
+  color:#62f0a5 !important; background:#103f2d !important; border:1px solid #38d98a !important;
+  box-shadow:0 0 0 1px rgba(56,217,138,.18),0 0 12px rgba(56,217,138,.28) !important;
+}
+.risk-pill.risk-amber, .rag.amber, .condition-pill.risk-amber {
+  color:#ffd45e !important; background:#4b3810 !important; border:1px solid #f2b927 !important;
+  box-shadow:0 0 0 1px rgba(242,185,39,.18),0 0 12px rgba(242,185,39,.28) !important;
+}
+.risk-pill.risk-red, .rag.red, .condition-pill.risk-red {
+  color:#ff8795 !important; background:#4b1821 !important; border:1px solid #f35d72 !important;
+  box-shadow:0 0 0 1px rgba(243,93,114,.18),0 0 12px rgba(243,93,114,.30) !important;
+}
+.risk-pill.risk-green, .risk-pill.risk-amber, .risk-pill.risk-red,
+.rag.green, .rag.amber, .rag.red,
+.condition-pill.risk-green, .condition-pill.risk-amber, .condition-pill.risk-red {
+  display:inline-flex !important; align-items:center !important; gap:7px !important;
+  padding:6px 10px !important; border-radius:999px !important; font-weight:900 !important;
+  line-height:1 !important; opacity:1 !important; -webkit-text-fill-color:currentColor !important;
+}
+.risk-pill.risk-green::before, .risk-pill.risk-amber::before, .risk-pill.risk-red::before,
+.rag.green::before, .rag.amber::before, .rag.red::before,
+.condition-pill.risk-green::before, .condition-pill.risk-amber::before, .condition-pill.risk-red::before {
+  content:"" !important; display:block !important; width:8px !important; height:8px !important;
+  border-radius:50% !important; background:currentColor !important; box-shadow:0 0 8px currentColor !important;
+}
+</style>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
