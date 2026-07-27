@@ -194,6 +194,7 @@
       <section id="assets" class="view">
         <div class="hero">
           <div><div class="eyebrow">Asset intelligence</div><h1>Asset Intelligence Register</h1><p class="subtle">Browse building systems, asset condition, lifecycle exposure and replacement liability.</p></div>
+          <button class="primary-btn" id="addAssetPageBtn">＋ Add Asset</button>
         </div>
         <div class="asset-toolbar card">
           <div><label class="asset-label" for="assetBuildingSelect">Building</label><select id="assetBuildingSelect"></select></div>
@@ -278,7 +279,7 @@
 <div id="recordModal" class="modal-backdrop" hidden><div class="record-modal"><div class="side-panel-head"><h2 id="recordModalTitle">Add record</h2><button id="closeRecordModal">×</button></div><form id="recordForm" class="record-form"></form></div></div>
 
     <footer class="footer">
-      <span>SiteVue360 Version 0.2 · Five-Site Active Demonstrator</span>
+      <span>SiteVue360 v1.3 · Asset Intelligence</span>
       <span id="updatedAt">Last updated: —</span>
     </footer>
   </div>
@@ -541,7 +542,8 @@ function assetsForBuilding(building){
     health:Number(a.healthScore||conditionToHealth(a.condition,a.riskRating)),
     life:Number(a.remainingLife||0), cost:Number(a.replacementCost||0),
     lastInspected:a.lastInspected||latestSurveyDate(building.buildingId)||"Not recorded",
-    criticality:a.criticality||"Medium", recommendation:a.recommendation||"Review against the latest survey findings."
+    criticality:a.criticality||"Medium", recommendation:a.recommendation||"Review against the latest survey findings.",
+    description:a.description||"",manufacturer:a.manufacturer||"",model:a.model||"",serialNumber:a.serialNumber||"",installationDate:a.installationDate||"",warrantyExpiry:a.warrantyExpiry||"",digitalTwinUrl:a.digitalTwinUrl||"",status:a.status||"Active",_dbId:a._dbId
   }));
   const out=[]; let seq=1;
   Object.entries(ASSET_LIBRARY).forEach(([system,names],si)=>names.forEach((name,ai)=>{
@@ -572,7 +574,26 @@ function renderAssets(){
   document.querySelectorAll("[data-asset-id]").forEach(row=>row.onclick=()=>{selectedAssetId=row.dataset.assetId;const a=all.find(x=>x.assetId===selectedAssetId);renderAssets();renderAssetRecord(building,a);});
   if(selectedAssetId){const a=all.find(x=>x.assetId===selectedAssetId); if(a) renderAssetRecord(building,a);}
 }
-function renderAssetRecord(building,a){if(!a)return;$("assetRecord").innerHTML=`<div class="asset-record-head"><div><div class="eyebrow">Asset Intelligence Record</div><h2>${a.name}</h2><div class="subtle">${a.assetId} · ${building.buildingName} · ${a.system}</div></div><span class="rag ${a.risk.toLowerCase()}">${a.risk} risk</span></div><div class="asset-record-grid"><div><span>Condition</span><strong>${a.condition}</strong></div><div><span>Health score</span><strong>${a.health}%</strong></div><div><span>Remaining life</span><strong>${a.life} years</strong></div><div><span>Replacement cost</span><strong>${currency(a.cost)}</strong></div><div><span>Criticality</span><strong>${a.criticality}</strong></div><div><span>Last inspected</span><strong>${a.lastInspected}</strong></div></div><div class="asset-recommendation"><b>Recommended action</b><p>${a.recommendation}</p></div>`;}
+function renderAssetRecord(building,a){
+ if(!a)return;
+ const healthCondition=a.health>=80?'Good':a.health>=60?'Monitor':a.health>=40?'Needs Attention':'Critical';
+ $("assetRecord").innerHTML=`<div class="asset-workspace-head"><div><div class="eyebrow">Asset Workspace</div><h2>${a.name}</h2><div class="subtle">${a.assetId} · ${building.buildingName} · ${a.system}</div></div><div class="asset-workspace-actions"><span class="rag ${a.risk.toLowerCase()}">${a.risk} risk</span><button class="secondary-btn" id="editAssetBtn">Edit</button><button class="danger-btn" id="deleteAssetBtn">Delete</button></div></div>
+ <div class="asset-workspace-tabs"><button class="active" data-asset-tab="overview">Overview</button><button data-asset-tab="condition">Condition</button><button data-asset-tab="surveys">Surveys</button><button data-asset-tab="defects">Defects</button><button data-asset-tab="works">Works</button><button data-asset-tab="documents">Documents</button><button data-asset-tab="timeline">Timeline</button><button data-asset-tab="digital">Digital Twin</button></div>
+ <div id="assetWorkspaceContent"></div>`;
+ const renderTab=(tab='overview')=>{
+   document.querySelectorAll('[data-asset-tab]').forEach(btn=>btn.classList.toggle('active',btn.dataset.assetTab===tab));
+   let content='';
+   if(tab==='overview') content=`<div class="asset-record-grid"><div><span>Condition</span><strong>${a.condition}</strong></div><div><span>Health score</span><strong>${a.health}%</strong></div><div><span>Remaining life</span><strong>${a.life} years</strong></div><div><span>Replacement cost</span><strong>${currency(a.cost)}</strong></div><div><span>Criticality</span><strong>${a.criticality}</strong></div><div><span>Status</span><strong>${a.status||'Active'}</strong></div></div><div class="asset-workspace-grid"><article><h3>Asset details</h3><div class="detail-list"><div><span>Category</span><b>${a.assetCategory||a.system}</b></div><div><span>Manufacturer</span><b>${a.manufacturer||'—'}</b></div><div><span>Model</span><b>${a.model||'—'}</b></div><div><span>Serial number</span><b>${a.serialNumber||'—'}</b></div><div><span>Installed</span><b>${a.installationDate||'Not recorded'}</b></div><div><span>Warranty expiry</span><b>${a.warrantyExpiry||'Not recorded'}</b></div></div></article><article><h3>Intelligence</h3><div class="health-summary"><strong>${a.health}%</strong><span>${healthCondition}</span></div><p>${a.description||'No detailed asset description has been recorded.'}</p><div class="asset-recommendation"><b>Recommended action</b><p>${a.recommendation}</p></div></article></div>`;
+   else if(tab==='condition') content=`<div class="asset-record-grid"><div><span>Condition</span><strong>${a.condition}</strong></div><div><span>Risk</span><strong>${a.risk}</strong></div><div><span>Health</span><strong>${a.health}%</strong></div><div><span>Remaining life</span><strong>${a.life} years</strong></div><div><span>Last inspected</span><strong>${a.lastInspected||'Not recorded'}</strong></div><div><span>Criticality</span><strong>${a.criticality}</strong></div></div>`;
+   else if(tab==='digital') content=a.digitalTwinUrl?`<div class="asset-digital-link"><h3>Digital Twin Link</h3><p>${a.digitalTwinUrl}</p><a class="primary-btn" href="${a.digitalTwinUrl}" target="_blank" rel="noopener">Open asset model</a></div>`:'<div class="empty">No asset-level Digital Twin link has been recorded.</div>';
+   else content=`<div class="empty">The ${tab} workspace is ready for linked records in the next operational release.</div>`;
+   $("assetWorkspaceContent").innerHTML=content;
+ };
+ document.querySelectorAll('[data-asset-tab]').forEach(btn=>btn.onclick=()=>renderTab(btn.dataset.assetTab));
+ $("editAssetBtn").onclick=()=>openRecordModal('asset',a);
+ $("deleteAssetBtn").onclick=async()=>{if(!a._dbId)return alert('This is a generated demonstration asset and cannot be deleted.');if(!confirm(`Delete ${a.name}? This cannot be undone.`))return;const {error}=await sb.from('assets').delete().eq('id',a._dbId);if(error)return alert(error.message);selectedAssetId=null;await loadOrganisationData(currentOrganisation.id);$("assetRecord").innerHTML='<div class="empty">Asset deleted.</div>';};
+ renderTab();
+}
 
 function renderAll() {
   renderPropertyBrowser(); renderExecutive(); renderPortfolio(); renderTechnical(); renderAssets(); renderIntelligence();
@@ -876,6 +897,38 @@ async function importDataset(type,file){
     return;
   }
 
+  if(type==="assets"){
+    const {data:{user}}=await sb.auth.getUser();
+    const buildingByCode=new Map(allBuildings.map(b=>[b.buildingId,b]));
+    const payloads=rows.map(row=>{
+      const building=buildingByCode.get(row.buildingId);
+      if(!building?._dbId) throw new Error(`Building ${row.buildingId} is not available in the current client database.`);
+      return {
+        organisation_id:currentOrganisation.id,
+        building_id:building._dbId,
+        created_by:user.id,
+        asset_code:row.assetId,
+        asset_name:row.assetName,
+        asset_category:row.assetCategory||row.system||"General",
+        system:row.system||row.assetCategory||"General",
+        condition:row.condition||"Not assessed",
+        risk_rating:row.riskRating||"Amber",
+        health_score:Number(row.healthScore||conditionToHealth(row.condition,row.riskRating)),
+        remaining_life:Number(row.remainingLife||0),
+        replacement_cost:Number(row.replacementCost||0),
+        last_inspected:row.lastInspected?normaliseCsvDate(row.lastInspected):null,
+        criticality:row.criticality||"Medium",
+        recommendation:row.recommendation||null,
+        status:"Active"
+      };
+    });
+    const {error}=await sb.from("assets").upsert(payloads,{onConflict:"organisation_id,asset_code"});
+    if(error) throw error;
+    await loadOrganisationData(currentOrganisation.id);
+    setImportStatus(type,rows.length,file.name,[...notes,"Saved permanently to Supabase."]);
+    return;
+  }
+
   DATA_STORE[type]=rows;
   enrichBuildings();
   populateFilters();
@@ -1005,7 +1058,7 @@ async function loadOrganisationData(orgId){
   const mapped=(buildings||[]).map(b=>({buildingId:b.building_code,buildingName:b.building_name,clientName:currentOrganisation.name,address:b.address||"",buildingType:b.building_type||"Commercial",roofType:b.roof_type||"Not recorded",roofAge:b.roof_age||0,surveyDate:b.last_survey_date||"",ragRating:b.rag_rating||"Green",worksRequired:b.works_required?"Yes":"No",estimatedCosts:Number(b.estimated_costs||0),serviceableLife:b.serviceable_life||0,thermalAssessment:b.thermal_rating||"Not assessed",energyAssessment:b.energy_rating||"Not assessed",portfolioScore:b.health_score||0,futureCosts:Number(b.future_costs||0),status:b.status||"Active",dataReadiness:"Live database",grossFloorArea:Number(b.gross_floor_area||0),roofArea:Number(b.roof_area||0),constructionYear:b.construction_year||0,occupancy:b.occupancy||"Operational",surveyDueDate:b.survey_due_date||"",digitalTwinUrl:b.digital_twin_url||"",imageUrl:b.image_url||"",portfolioName:b.portfolio_name||"",surveys:0,defects:0,documents:0,warranties:0,_dbId:b.id}));
   allBuildings=mapped; filteredBuildings=structuredClone(mapped); lastPortfolioFiltered=structuredClone(mapped); selectedBuildingId=mapped[0]?.buildingId||null;
   DATA_STORE.buildings=structuredClone(mapped);
-  DATA_STORE.assets=(assets||[]).map(a=>({assetId:a.asset_code,buildingId:(buildings||[]).find(b=>b.id===a.building_id)?.building_code||"",system:a.system||a.asset_category||"General",assetName:a.asset_name,condition:a.condition||"Unknown",risk:a.risk_rating||"Green",health:Number(a.health_score||0),remainingLife:Number(a.remaining_life||0),replacementCost:Number(a.replacement_cost||0),lastInspected:a.last_inspected||"",_dbId:a.id}));
+  DATA_STORE.assets=(assets||[]).map(a=>({assetId:a.asset_code,buildingId:(buildings||[]).find(b=>b.id===a.building_id)?.building_code||"",system:a.system||a.asset_category||"General",assetName:a.asset_name,assetCategory:a.asset_category||"",condition:a.condition||"Unknown",risk:a.risk_rating||"Green",health:Number(a.health_score||0),remainingLife:Number(a.remaining_life||0),replacementCost:Number(a.replacement_cost||0),lastInspected:a.last_inspected||"",criticality:a.criticality||"Medium",recommendation:a.recommendation||"",description:a.description||"",manufacturer:a.manufacturer||"",model:a.model||"",serialNumber:a.serial_number||"",installationDate:a.installation_date||"",warrantyExpiry:a.warranty_expiry||"",digitalTwinUrl:a.digital_twin_url||"",status:a.status||"Active",_dbId:a.id}));
   populateFilters(); renderAll();
 }
 async function loadNotifications(orgId){
@@ -1083,18 +1136,20 @@ if(q("openNewClient"))q("openNewClient").onclick=()=>{q("quickAddMenu").hidden=t
 q("openImportExisting").onclick=()=>{q("quickAddMenu").hidden=true;q("dataHub").hidden=false;q("dataHub").scrollIntoView({behavior:"smooth"});};
 const formFields={
  building:[['organisation_id','Client / organisation','organisation-select',true],['portfolio_name','Portfolio','text',false],['building_name','Building name','text',true],['building_code','Building ID / code','text',true],['address','Address','text',false],['building_type','Building type','text',false],['status','Status','text',false],['occupancy','Occupancy','text',false],['construction_year','Construction year','number',false],['gross_floor_area','Gross floor area (m²)','number',false],['floor_count','Number of floors','number',false],['health_score','Health score (%)','number',false],['condition','Condition','text',false],['survey_due_date','Survey due date','date',false],['digital_twin_url','Digital twin URL','url',false],['image_url','Building image URL','url',false]],
- asset:[['building_id','Building','select',true],['asset_name','Asset name','text',true],['asset_code','Asset ID / code','text',true],['asset_category','Asset category','text',false],['system','System','text',false],['condition','Condition','text',false],['remaining_life','Remaining life (years)','number',false],['replacement_cost','Replacement cost (£)','number',false]]
+ asset:[['building_id','Building','select',true],['asset_name','Asset name','text',true],['asset_code','Asset ID / code','text',true],['asset_category','Asset category','text',false],['system','System','text',false],['condition','Condition','text',false],['risk_rating','Risk rating','text',false],['health_score','Health score (%)','number',false],['criticality','Criticality','text',false],['remaining_life','Remaining life (years)','number',false],['replacement_cost','Replacement cost (£)','number',false],['last_inspected','Last inspected','date',false],['installation_date','Installation date','date',false],['warranty_expiry','Warranty expiry','date',false],['manufacturer','Manufacturer','text',false],['model','Model','text',false],['serial_number','Serial number','text',false],['status','Status','text',false],['digital_twin_url','Digital twin URL','url',false],['description','Description','text',false],['recommendation','Recommended action','text',false]]
 };
-function openRecordModal(type){
- q("quickAddMenu").hidden=true;q("recordModal").hidden=false;q("recordModalTitle").textContent=type==='building'?'Add Building':'Add Asset';
+function openRecordModal(type,record=null){
+ q("quickAddMenu").hidden=true;q("recordModal").hidden=false;q("recordModalTitle").textContent=record?(type==='building'?'Edit Building':'Edit Asset'):(type==='building'?'Add Building':'Add Asset');
  q("recordForm").dataset.type=type;
+ q("recordForm").dataset.editId=record?._dbId||"";
  q("recordForm").innerHTML=formFields[type].map(([name,label,input,required])=>{
-   if(input==='select') return `<label>${label}<select name="${name}" ${required?'required':''}>${allBuildings.map(b=>`<option value="${b._dbId||''}">${b.buildingName}</option>`).join('')}</select></label>`;
+   const value=record?.[name]??record?.[({asset_name:'assetName',asset_code:'assetId',asset_category:'assetCategory',risk_rating:'risk',health_score:'health',remaining_life:'remainingLife',replacement_cost:'replacementCost',last_inspected:'lastInspected',serial_number:'serialNumber',installation_date:'installationDate',warranty_expiry:'warrantyExpiry',digital_twin_url:'digitalTwinUrl'}[name])]??'';
+   if(input==='select') return `<label>${label}<select name="${name}" ${required?'required':''}>${allBuildings.map(b=>`<option value="${b._dbId||''}" ${String(value)===String(b._dbId)?'selected':''}>${b.buildingName}</option>`).join('')}</select></label>`;
    if(input==='organisation-select'){
-     const options=accessibleOrganisations.map(org=>`<option value="${org.id}" ${org.id===currentOrganisation?.id?'selected':''}>${org.name}</option>`).join('');
+     const options=accessibleOrganisations.map(org=>`<option value="${org.id}" ${String(value||currentOrganisation?.id)===String(org.id)?'selected':''}>${org.name}</option>`).join('');
      return `<label>${label}<select name="${name}" ${required?'required':''}>${options}</select></label>`;
    }
-   return `<label>${label}<input name="${name}" type="${input}" ${required?'required':''}></label>`;
+   return `<label>${label}<input name="${name}" type="${input}" value="${String(value).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" ${required?'required':''}></label>`;
  }).join('')+'<div class="form-actions"><button type="button" class="secondary-btn" id="cancelRecord">Cancel</button><button class="primary-btn" type="submit">Save record</button></div><div id="recordMessage" class="auth-message"></div>';
  q("cancelRecord").onclick=()=>q("recordModal").hidden=true;
 }
@@ -1109,7 +1164,9 @@ q("recordForm").addEventListener("submit",async e=>{
   payload.created_by=(await sb.auth.getUser()).data.user.id;
   const table=type==='building'?'buildings':'assets';
   q("recordMessage").textContent="Saving…";
-  const {error}=await sb.from(table).insert(payload);
+  const editId=e.currentTarget.dataset.editId;
+  const query=editId?sb.from(table).update(payload).eq("id",editId):sb.from(table).insert(payload);
+  const {error}=await query;
   if(error){q("recordMessage").textContent=error.message;q("recordMessage").className='auth-message error';return;}
   q("recordModal").hidden=true;
   if(type==='building' && selectedOrganisationId!==currentOrganisation.id && accessibleOrganisations.some(o=>o.id===selectedOrganisationId)){
@@ -1137,7 +1194,7 @@ renderPortfolio=function(){
 function openBuildingWorkspace(id){selectedBuildingId=id;activeWorkspaceTab='overview';q('buildingCardGrid').hidden=true;q('buildingWorkspace').hidden=false;renderBuildingWorkspace();window.scrollTo({top:0,behavior:'smooth'});}
 function renderBuildingWorkspace(){const b=allBuildings.find(x=>x.buildingId===selectedBuildingId);if(!b)return;q('workspaceCode').textContent=b.buildingId;q('workspaceName').textContent=b.buildingName;q('workspaceAddress').textContent=b.address||'Address not recorded';q('workspaceHealth').textContent=`${Number(b.portfolioScore||0)}%`;q('workspaceCondition').textContent=buildingCondition(b);q('workspaceMeta').innerHTML=`<span><small>Client</small><b>${b.clientName||currentOrganisation?.name||'—'}</b></span><span><small>Type</small><b>${b.buildingType||'—'}</b></span><span><small>Constructed</small><b>${b.constructionYear||'—'}</b></span><span><small>Floor area</small><b>${Number(b.grossFloorArea||0).toLocaleString()} m²</b></span><span><small>Occupancy</small><b>${b.occupancy||'—'}</b></span><span><small>Digital twin</small><b>${b.digitalTwinUrl?'Available':'Not linked'}</b></span>`;renderWorkspaceContent(b);}
 function renderWorkspaceContent(b){const assets=(DATA_STORE.assets||[]).filter(a=>a.buildingId===b.buildingId), defects=(DATA_STORE.defects||[]).filter(x=>x.buildingId===b.buildingId), works=(DATA_STORE.works||[]).filter(x=>x.buildingId===b.buildingId);let h='';if(activeWorkspaceTab==='overview')h=`<div class="workspace-kpis"><article class="card"><small>Building health</small><strong>${b.portfolioScore||0}%</strong><span>${buildingCondition(b)}</span></article><article class="card"><small>Registered assets</small><strong>${assets.length}</strong><span>Maintainable items</span></article><article class="card"><small>Open defects</small><strong>${defects.length||b.defects||0}</strong><span>Current issues</span></article><article class="card"><small>Future liability</small><strong>${compactMoney(Number(b.futureCosts||0))}</strong><span>Planned exposure</span></article></div><div class="workspace-grid"><article class="card"><div class="panel-title"><h2>Building profile</h2></div><div class="detail-list"><div><span>Status</span><b>${b.status||'Active'}</b></div><div><span>Building type</span><b>${b.buildingType||'—'}</b></div><div><span>Construction year</span><b>${b.constructionYear||'—'}</b></div><div><span>Gross internal area</span><b>${Number(b.grossFloorArea||0).toLocaleString()} m²</b></div><div><span>Latest survey</span><b>${b.surveyDate||'Not recorded'}</b></div><div><span>Survey due</span><b>${b.surveyDueDate||'Not scheduled'}</b></div></div></article><article class="card"><div class="panel-title"><h2>Intelligence summary</h2><span class="condition-pill ${conditionClass(buildingCondition(b))}">${buildingCondition(b)}</span></div><p class="workspace-narrative">${recommendationFor(b)}</p><div class="reco"><b>Next priority</b><br>${Number(b.serviceableLife||0)<3?'Prepare immediate intervention and funding approval.':'Maintain planned inspection and lifecycle programme.'}</div></article></div>`;else if(activeWorkspaceTab==='assets')h=`<article class="card"><div class="panel-title"><h2>Assets</h2><span class="badge">${assets.length}</span></div>${assets.length?assets.map(a=>`<div class="workspace-row"><b>${a.assetName||a.name}</b><span>${a.system||'General'}</span><span>${a.condition||'Unknown'}</span></div>`).join(''):'<div class="empty">No assets have been assigned to this building yet.</div>'}</article>`;else if(activeWorkspaceTab==='settings')h=`<article class="card"><div class="panel-title"><h2>Building settings</h2></div><p class="subtle">Edit and deletion controls will use the organisation permissions already established in Sprint 1A.</p><button class="primary-btn" id="workspaceEditBuilding">Edit Building</button></article>`;else h=`<article class="card"><div class="panel-title"><h2>${activeWorkspaceTab[0].toUpperCase()+activeWorkspaceTab.slice(1)}</h2></div><div class="empty">This workspace is ready for the ${activeWorkspaceTab} module in the next release.</div></article>`;q('workspaceContent').innerHTML=h;if(q('workspaceEditBuilding'))q('workspaceEditBuilding').onclick=()=>openRecordModal('building');}
-q('closeBuildingWorkspace').onclick=()=>{q('buildingWorkspace').hidden=true;q('buildingCardGrid').hidden=false;renderPortfolio();};q('workspaceTabs').onclick=e=>{const btn=e.target.closest('[data-workspace-tab]');if(!btn)return;activeWorkspaceTab=btn.dataset.workspaceTab;document.querySelectorAll('[data-workspace-tab]').forEach(x=>x.classList.toggle('active',x===btn));renderBuildingWorkspace();};['buildingPageSearch','buildingConditionFilter','buildingStatusFilter'].forEach(id=>q(id).addEventListener(id==='buildingPageSearch'?'input':'change',renderPortfolio));q('addBuildingPageBtn').onclick=()=>openRecordModal('building');
+q('closeBuildingWorkspace').onclick=()=>{q('buildingWorkspace').hidden=true;q('buildingCardGrid').hidden=false;renderPortfolio();};q('workspaceTabs').onclick=e=>{const btn=e.target.closest('[data-workspace-tab]');if(!btn)return;activeWorkspaceTab=btn.dataset.workspaceTab;document.querySelectorAll('[data-workspace-tab]').forEach(x=>x.classList.toggle('active',x===btn));renderBuildingWorkspace();};['buildingPageSearch','buildingConditionFilter','buildingStatusFilter'].forEach(id=>q(id).addEventListener(id==='buildingPageSearch'?'input':'change',renderPortfolio));q('addBuildingPageBtn').onclick=()=>openRecordModal('building');if(q('addAssetPageBtn'))q('addAssetPageBtn').onclick=()=>openRecordModal('asset');
 </script>
 
 </body>
