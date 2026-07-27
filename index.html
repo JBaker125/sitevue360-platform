@@ -644,7 +644,7 @@ function canonicalHeader(h){
 }
 
 const HEADER_MAP={
- buildingid:"buildingId",buildingname:"buildingName",clientname:"clientName",buildingaddress:"address",address:"address",buildingtype:"buildingType",rooftype:"roofType",roofageyears:"roofAge",roofage:"roofAge",surveydate:"surveyDate",ragrating:"ragRating",worksrequiredyesno:"worksRequired",worksrequired:"worksRequired",estimatedcosts:"estimatedCosts",serviceableliferemainingyears:"serviceableLife",serviceablelife:"serviceableLife",thermalassessment:"thermalAssessment",energyassessment:"energyAssessment",grossfloorarea:"grossFloorArea",roofarea:"roofArea",constructionyear:"constructionYear",occupancy:"occupancy",status:"status",
+ buildingid:"buildingId",buildingname:"buildingName",clientname:"clientName",buildingaddress:"address",address:"address",buildingtype:"buildingType",rooftype:"roofType",roofageyears:"roofAge",roofage:"roofAge",surveydate:"surveyDate",ragrating:"ragRating",worksrequiredyesno:"worksRequired",worksrequired:"worksRequired",estimatedcosts:"estimatedCosts",serviceableliferemainingyears:"serviceableLife",serviceablelife:"serviceableLife",thermalassessment:"thermalAssessment",energyassessment:"energyAssessment",grossfloorarea:"grossFloorArea",roofarea:"roofArea",constructionyear:"constructionYear",occupancy:"occupancy",status:"status",portfolioname:"portfolioName",portfolio:"portfolioName",
  assetid:"assetId",system:"system",assetname:"assetName",condition:"condition",riskrating:"riskRating",healthscore:"healthScore",remaininglife:"remainingLife",replacementcost:"replacementCost",lastinspected:"lastInspected",criticality:"criticality",recommendation:"recommendation",
  surveyid:"surveyId",surveymethod:"surveyMethod",surveysummary:"surveySummary",finding:"finding",defectcount:"defectCount",moisturereading:"moistureReading",reportreference:"reportReference",
  defectid:"defectId",description:"description",location:"location",priority:"priority",defectstatus:"defectStatus",estimatedrepaircost:"estimatedRepairCost",recommendedaction:"recommendedAction",relatedassetid:"relatedAssetId",
@@ -653,10 +653,35 @@ const HEADER_MAP={
 };
 
 function parseNumber(value){
-  const clean=String(value??"").trim().replace(/[£,$%\s]/g,"");
-  if(clean==="") return "";
+  const raw=String(value??"").trim();
+  if(raw==="") return "";
+  // Accept values such as "3 Years", "25,000 m²", "£185,000" and "82%".
+  const clean=raw.replace(/,/g,"").replace(/[^0-9.+-]/g,"");
+  if(clean==="" || !/[0-9]/.test(clean)) return "";
   const parsed=Number(clean);
   return Number.isFinite(parsed)?parsed:"";
+}
+
+function normaliseCsvDate(value){
+  const raw=String(value??"").trim();
+  if(!raw) return null;
+  // Already ISO-compatible.
+  if(/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  // UK spreadsheet format: DD/MM/YYYY or DD-MM-YYYY.
+  const uk=raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  if(uk){
+    const day=Number(uk[1]), month=Number(uk[2]), year=Number(uk[3]);
+    const date=new Date(Date.UTC(year,month-1,day));
+    if(date.getUTCFullYear()===year && date.getUTCMonth()===month-1 && date.getUTCDate()===day){
+      return `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+    }
+  }
+  // Excel may export a date in a browser-readable long form.
+  const parsed=new Date(raw);
+  if(!Number.isNaN(parsed.getTime())){
+    return `${parsed.getFullYear()}-${String(parsed.getMonth()+1).padStart(2,"0")}-${String(parsed.getDate()).padStart(2,"0")}`;
+  }
+  throw new Error(`Invalid date "${raw}". Use DD/MM/YYYY or YYYY-MM-DD.`);
 }
 
 function parseDatasetCSV(text,type){
@@ -826,13 +851,15 @@ async function importDataset(type,file){
 
   if(type==="buildings"){
     const {data:{user}}=await sb.auth.getUser();
+    const unmatchedClients=new Set();
     const payloads=rows.map(row=>{
       const matchedOrg=accessibleOrganisations.find(org=>norm(org.name)===norm(row.clientName)||norm(org.slug)===norm(row.clientName));
+      if(!matchedOrg && row.clientName) unmatchedClients.add(row.clientName);
       const orgId=matchedOrg?.id||currentOrganisation.id;
       return {
         organisation_id:orgId, created_by:user.id, building_code:row.buildingId, building_name:row.buildingName,
         address:row.address||null, building_type:row.buildingType||null, roof_type:row.roofType||null, roof_age:Number(row.roofAge||0),
-        last_survey_date:row.surveyDate||null, rag_rating:row.ragRating||"Green", works_required:["yes","true","1"].includes(norm(row.worksRequired)),
+        last_survey_date:normaliseCsvDate(row.surveyDate), rag_rating:row.ragRating||"Green", works_required:["yes","true","1"].includes(norm(row.worksRequired)),
         estimated_costs:Number(row.estimatedCosts||0), serviceable_life:Number(row.serviceableLife||0), thermal_rating:row.thermalAssessment||null,
         energy_rating:row.energyAssessment||null, health_score:Number(row.portfolioScore||0), future_costs:Number(row.futureCosts||0),
         status:row.status||"Active", gross_floor_area:Number(row.grossFloorArea||0), roof_area:Number(row.roofArea||0),
@@ -842,7 +869,10 @@ async function importDataset(type,file){
     const {error}=await sb.from("buildings").upsert(payloads,{onConflict:"organisation_id,building_code"});
     if(error) throw error;
     await loadOrganisationData(currentOrganisation.id);
-    setImportStatus(type,rows.length,file.name,[...notes,"Saved permanently to Supabase."]);
+    const clientNote=unmatchedClients.size
+      ? `Client name(s) ${[...unmatchedClients].join(", ")} did not match an accessible organisation, so those rows were saved to ${currentOrganisation.name}.`
+      : "";
+    setImportStatus(type,rows.length,file.name,[...notes,"Saved permanently to Supabase.",clientNote].filter(Boolean));
     return;
   }
 
