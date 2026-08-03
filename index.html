@@ -1286,7 +1286,14 @@ function openRecordModal(type,record=null){
  q("recordForm").dataset.type=type;
  q("recordForm").dataset.editId=record?._dbId||"";
  q("recordForm").innerHTML=formFields[type].map(([name,label,input,required])=>{
-   const value=record?.[name]??record?.[({asset_name:'assetName',asset_code:'assetId',asset_category:'assetCategory',risk_rating:'risk',health_score:'health',remaining_life:'remainingLife',replacement_cost:'replacementCost',last_inspected:'lastInspected',serial_number:'serialNumber',installation_date:'installationDate',warranty_expiry:'warrantyExpiry',digital_twin_url:'digitalTwinUrl'}[name])]??'';
+   const fieldMap={asset_name:'assetName',asset_code:'assetId',asset_category:'assetCategory',risk_rating:'risk',health_score:'health',remaining_life:'remainingLife',replacement_cost:'replacementCost',last_inspected:'lastInspected',serial_number:'serialNumber',installation_date:'installationDate',warranty_expiry:'warrantyExpiry',digital_twin_url:'digitalTwinUrl'};
+   let value=record?.[name]??record?.[fieldMap[name]]??'';
+   // Demo/generated assets use the public building code. Convert it to the
+   // Supabase building UUID before rendering the asset edit form so the
+   // asset-specific Digital Twin URL is saved against the correct asset/building.
+   if(type==='asset' && name==='building_id' && !value && record?.buildingId){
+     value=allBuildings.find(b=>b.buildingId===record.buildingId)?._dbId||'';
+   }
    if(input==='select') return `<label>${label}<select name="${name}" ${required?'required':''}>${allBuildings.map(b=>`<option value="${b._dbId||''}" ${String(value)===String(b._dbId)?'selected':''}>${b.buildingName}</option>`).join('')}</select></label>`;
    if(input==='organisation-select'){
      const options=accessibleOrganisations.map(org=>`<option value="${org.id}" ${String(value||currentOrganisation?.id)===String(org.id)?'selected':''}>${org.name}</option>`).join('');
